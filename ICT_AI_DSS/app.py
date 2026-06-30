@@ -248,21 +248,22 @@ You MUST output a structured decision in this EXACT format:
 Desktop: ₱50,000 | Laptop: ₱55,000 | Recommend: [type]"""
 
                         with st.chat_message('assistant'):
-                            msg_placeholder = st.empty()
-                            full_response = ''
-                            try:
-                                stream = ollama.chat(
-                                    model=ai_model,
-                                    messages=[{'role': 'user', 'content': prompt}],
-                                    stream=True
-                                )
-                                for chunk in stream:
-                                    if 'message' in chunk and 'content' in chunk['message']:
-                                        full_response += chunk['message']['content']
-                                        msg_placeholder.markdown(full_response + '▌')
-                                msg_placeholder.markdown(full_response)
-                            except Exception as e:
-                                st.error(f'Ollama error: {e}')
+                            with st.spinner('AI analyzing with critical reasoning...'):
+                                msg_placeholder = st.empty()
+                                full_response = ''
+                                try:
+                                    stream = ollama.chat(
+                                        model=ai_model,
+                                        messages=[{'role': 'user', 'content': prompt}],
+                                        stream=True
+                                    )
+                                    for chunk in stream:
+                                        if 'message' in chunk and 'content' in chunk['message']:
+                                            full_response += chunk['message']['content']
+                                            msg_placeholder.markdown(full_response + '▌')
+                                    msg_placeholder.markdown(full_response)
+                                except Exception as e:
+                                    st.error(f'Ollama error: {e}')
 
                         with st.expander('📋 AI Decision Summary'):
                             st.markdown(full_response)
@@ -274,16 +275,18 @@ Desktop: ₱50,000 | Laptop: ₱55,000 | Recommend: [type]"""
         with tab2:
             st.subheader('📝 Generate AI-Driven Replacement Report')
             st.markdown('Have the AI analyze ALL assets and generate a comprehensive replacement report with critical reasoning.')
+            
             if st.button('🚀 Generate Full AI Replacement Report', type='primary', use_container_width=True):
-                if repl_df is not None:
-                    critical_count = len(repl_df[repl_df['predicted_priority'] == 'Critical'])
-                    high_count = len(repl_df[repl_df['predicted_priority'] == 'High'])
-                    medium_count = len(repl_df[repl_df['predicted_priority'] == 'Medium'])
-                    low_count = len(repl_df[repl_df['predicted_priority'] == 'Low'])
-                    avg_health = repl_df['asset_health_score'].mean()
-                    total_budget = critical_count * 50000 + high_count * 50000
+                with st.spinner('AI generating comprehensive replacement report...'):
+                    if repl_df is not None:
+                        critical_count = len(repl_df[repl_df['predicted_priority'] == 'Critical'])
+                        high_count = len(repl_df[repl_df['predicted_priority'] == 'High'])
+                        medium_count = len(repl_df[repl_df['predicted_priority'] == 'Medium'])
+                        low_count = len(repl_df[repl_df['predicted_priority'] == 'Low'])
+                        avg_health = repl_df['asset_health_score'].mean()
+                        total_budget = critical_count * 50000 + high_count * 50000
 
-                    prompt = f"""You are a Senior ICT Asset Management Director. Generate a comprehensive AI-Driven Replacement Report.
+                        prompt = f"""You are a Senior ICT Asset Management Director. Generate a comprehensive AI-Driven Replacement Report.
 
 DATA SUMMARY:
 - Total Assets: {len(inv)}
@@ -305,31 +308,33 @@ STRUCTURE YOUR REPORT:
 
 Be specific, use critical reasoning, and provide actionable recommendations."""
 
-                    with st.chat_message('assistant'):
-                        msg = st.empty()
-                        full = ''
-                        try:
-                            stream = ollama.chat(model=ai_model, messages=[{'role': 'user', 'content': prompt}], stream=True)
-                            for chunk in stream:
-                                if 'message' in chunk and 'content' in chunk['message']:
-                                    full += chunk['message']['content']
-                                    msg.markdown(full + '▌')
-                            msg.markdown(full)
-                        except Exception as e:
-                            st.error(f'Ollama error: {e}')
-                else:
-                    st.warning('No data available.')
+                        with st.chat_message('assistant'):
+                            msg = st.empty()
+                            full = ''
+                            try:
+                                stream = ollama.chat(model=ai_model, messages=[{'role': 'user', 'content': prompt}], stream=True)
+                                for chunk in stream:
+                                    if 'message' in chunk and 'content' in chunk['message']:
+                                        full += chunk['message']['content']
+                                        msg.markdown(full + '▌')
+                                msg.markdown(full)
+                            except Exception as e:
+                                st.error(f'Ollama error: {e}')
+                    else:
+                        st.warning('No data available.')
 
         with tab3:
             st.subheader('📋 AI-Generated Procurement Plan')
             st.markdown('The AI uses critical reasoning to create a strategic procurement plan.')
+            
             if st.button('💰 Generate AI Procurement Plan', type='primary', use_container_width=True):
-                if emp_df is not None and div_short is not None and repl_df is not None:
-                    total_short = int(div_short['shortage'].sum())
-                    total_repl = len(repl_df[repl_df['predicted_priority'].isin(['Critical', 'High'])])
-                    emp_no_pc = len(emp_df)
+                with st.spinner('AI analyzing data and generating strategic procurement plan...'):
+                    if emp_df is not None and div_short is not None and repl_df is not None:
+                        total_short = int(div_short['shortage'].sum())
+                        total_repl = len(repl_df[repl_df['predicted_priority'].isin(['Critical', 'High'])])
+                        emp_no_pc = len(emp_df)
 
-                    prompt = f"""You are a Government ICT Procurement Strategist. Generate a critical-reasoning-based Procurement Plan.
+                        prompt = f"""You are a Government ICT Procurement Strategist. Generate a critical-reasoning-based Procurement Plan.
 
 CURRENT SITUATION:
 - Division Computer Shortage: {total_short} units
@@ -353,18 +358,18 @@ OUTPUT FORMAT:
 ### Phase 3: Long-term (6-12 months)
 ### Total Budget Summary"""
 
-                    with st.chat_message('assistant'):
-                        msg = st.empty()
-                        full = ''
-                        try:
-                            stream = ollama.chat(model=ai_model, messages=[{'role': 'user', 'content': prompt}], stream=True)
-                            for chunk in stream:
-                                if 'message' in chunk and 'content' in chunk['message']:
-                                    full += chunk['message']['content']
-                                    msg.markdown(full + '▌')
-                            msg.markdown(full)
-                        except Exception as e:
-                            st.error(f'Ollama error: {e}')
+                        with st.chat_message('assistant'):
+                            msg = st.empty()
+                            full = ''
+                            try:
+                                stream = ollama.chat(model=ai_model, messages=[{'role': 'user', 'content': prompt}], stream=True)
+                                for chunk in stream:
+                                    if 'message' in chunk and 'content' in chunk['message']:
+                                        full += chunk['message']['content']
+                                        msg.markdown(full + '▌')
+                                msg.markdown(full)
+                            except Exception as e:
+                                st.error(f'Ollama error: {e}')
 
         with tab4:
             st.subheader('📊 AI vs ML Decision Comparison')
@@ -394,11 +399,12 @@ Repairs: {asset.get('total_repairs', 0)}
 
 Output ONLY one word: Critical, High, Medium, or Low"""
 
-                        try:
-                            result = ollama.chat(model=ai_model, messages=[{'role': 'user', 'content': prompt}])
-                            ai_decision = result['message']['content'].strip().split('\n')[0][:20]
-                        except:
-                            ai_decision = 'Error'
+                        with st.spinner('AI predicting replacement priority...'):
+                            try:
+                                result = ollama.chat(model=ai_model, messages=[{'role': 'user', 'content': prompt}])
+                                ai_decision = result['message']['content'].strip().split('\n')[0][:20]
+                            except:
+                                ai_decision = 'Error'
 
                         col_a, col_b, col_c = st.columns([2, 1, 1])
                         with col_a:
@@ -509,6 +515,13 @@ elif page == '🏢 Division Shortage':
 elif page == '💰 Procurement Budget':
     st.title('💰 Procurement Recommendation & Budget')
     st.markdown('---')
+
+    if ollama_models:
+        budget_ai_model = st.sidebar.selectbox('🧠 Budget AI Model', ollama_models,
+                                                index=ollama_models.index('qwen3:latest') if 'qwen3:latest' in ollama_models else 0,
+                                                key='budget_ai_model')
+        st.sidebar.caption(f'Model: {budget_ai_model}')
+
     if proc is not None:
         total_row = proc[proc['category'] == 'TOTAL']
         items = proc[proc['category'] != 'TOTAL']
@@ -536,6 +549,64 @@ elif page == '💰 Procurement Budget':
         - **Laptop Computers**: {int(items[items['category']=='Laptop Computer']['recommended_purchase'].values[0])} units @ ₱{LAPTOP_COST:,} = ₱{int(items[items['category']=='Laptop Computer']['estimated_budget'].values[0]):,}
         - **Grand Total**: ₱{int(total_row['estimated_budget'].values[0]):,}
         """)
+
+        st.markdown('---')
+        st.subheader('🤖 AI Budget Analysis')
+        if ollama_models:
+            if st.button('📊 Generate AI Budget Analysis', type='primary', use_container_width=True):
+                budget_total = int(total_row['estimated_budget'].values[0])
+                desktop_units = int(items[items['category']=='Desktop Computer']['recommended_purchase'].values[0])
+                laptop_units = int(items[items['category']=='Laptop Computer']['recommended_purchase'].values[0])
+                total_short = int(div_short['shortage'].sum()) if div_short is not None else 0
+                emp_no_pc = len(emp_df) if emp_df is not None else 0
+                repl_critical = len(repl_df[repl_df['predicted_priority']=='Critical']) if repl_df is not None else 0
+                repl_high = len(repl_df[repl_df['predicted_priority']=='High']) if repl_df is not None else 0
+
+                prompt = f"""You are a Senior ICT Procurement and Budget Analyst. Analyze the following procurement budget data and provide strategic insights.
+
+BUDGET DATA:
+- Total Estimated Budget: ₱{budget_total:,}
+- Desktop Computers: {desktop_units} units @ ₱{DESKTOP_COST:,} = ₱{desktop_units * DESKTOP_COST:,}
+- Laptop Computers: {laptop_units} units @ ₱{LAPTOP_COST:,} = ₱{laptop_units * LAPTOP_COST:,}
+
+ADDITIONAL CONTEXT:
+- Division Computer Shortage: {total_short} units
+- Employees Without Computer: {emp_no_pc}
+- Critical Priority Assets: {repl_critical}
+- High Priority Assets: {repl_high}
+
+Provide a structured analysis covering:
+1. **Budget Adequacy** - Is the budget sufficient to address all needs?
+2. **Spending Breakdown** - Is the Desktop/Laptop split appropriate?
+3. **Gap Analysis** - What is still needed beyond this budget?
+4. **Risk Assessment** - What are the risks of under-funding?
+5. **Phasing Recommendation** - How to prioritize spending across phases
+6. **Strategic Recommendations** - Actionable next steps"""
+
+                with st.chat_message('assistant'):
+                    with st.spinner('AI analyzing budget data with critical reasoning...'):
+                        msg_placeholder = st.empty()
+                        full_response = ''
+                        try:
+                            stream = ollama.chat(
+                                model=budget_ai_model,
+                                messages=[{'role': 'user', 'content': prompt}],
+                                stream=True
+                            )
+                            for chunk in stream:
+                                if 'message' in chunk and 'content' in chunk['message']:
+                                    full_response += chunk['message']['content']
+                                    msg_placeholder.markdown(full_response + '▌')
+                            msg_placeholder.markdown(full_response)
+                        except Exception as e:
+                            st.error(f'Ollama error: {e}')
+                            full_response = '⚠️ Error connecting to Ollama. Ensure the server is running.'
+                            msg_placeholder.markdown(full_response)
+
+                with st.expander('📋 Full AI Budget Analysis'):
+                    st.markdown(full_response)
+        else:
+            st.info('💡 Start Ollama to unlock AI-powered budget analysis with your preferred model.')
     else:
         st.warning('Procurement recommendation not found.')
 
@@ -635,25 +706,26 @@ Advise on maintenance scheduling, when to repair vs replace, and how to extend a
                 st.markdown(prompt)
 
             with st.chat_message('assistant'):
-                msg_placeholder = st.empty()
-                full_response = ''
-                try:
-                    stream = ollama.chat(
-                        model=selected_model,
-                        messages=[{'role': 'system', 'content': system_prompt}] + [
-                            {'role': m['role'], 'content': m['content']}
-                            for m in st.session_state.messages[-10:]
-                        ],
-                        stream=True
-                    )
-                    for chunk in stream:
-                        if 'message' in chunk and 'content' in chunk['message']:
-                            full_response += chunk['message']['content']
-                            msg_placeholder.markdown(full_response + '▌')
-                    msg_placeholder.markdown(full_response)
-                except Exception as e:
-                    st.error(f'Ollama error: {e}')
-                    full_response = '⚠️ Error connecting to Ollama. Ensure the server is running with `ollama serve`.'
-                    msg_placeholder.markdown(full_response)
+                with st.spinner(f'AI assistant is thinking with **{selected_model}**...'):
+                    msg_placeholder = st.empty()
+                    full_response = ''
+                    try:
+                        stream = ollama.chat(
+                            model=selected_model,
+                            messages=[{'role': 'system', 'content': system_prompt}] + [
+                                {'role': m['role'], 'content': m['content']}
+                                for m in st.session_state.messages[-10:]
+                            ],
+                            stream=True
+                        )
+                        for chunk in stream:
+                            if 'message' in chunk and 'content' in chunk['message']:
+                                full_response += chunk['message']['content']
+                                msg_placeholder.markdown(full_response + '▌')
+                        msg_placeholder.markdown(full_response)
+                    except Exception as e:
+                        st.error(f'Ollama error: {e}')
+                        full_response = '⚠️ Error connecting to Ollama. Ensure the server is running with `ollama serve`.'
+                        msg_placeholder.markdown(full_response)
 
             st.session_state.messages.append({'role': 'assistant', 'content': full_response})
