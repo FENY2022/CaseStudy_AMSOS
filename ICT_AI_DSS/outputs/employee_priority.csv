@@ -1,97 +1,33 @@
 employee_name,sex,office_division,status_of_employment,nature_of_work,priority_score,recommendation,rank
-Kent Horace,Female,Finance,Permanent,Technical Works,60,Assign Desktop Computer,1
-Vilma C. Manpatilan,Female,Finance,Permanent,Technical Works,60,Assign Desktop Computer,2
-Hector D. Delanto,Male,RSCIG,Permanent,Technical Works,60,Assign Desktop Computer,3
-Jewel D. Padullon,Female,ED,Permanent,Technical Works,60,Assign Desktop Computer,4
-Romeo Araojo Jr.,Male,LPDD,Permanent,Technical Works,60,Assign Desktop Computer,5
-Romeo Araojo,Male,LPDD,Permanent,Technical Works,60,Assign Desktop Computer,6
-Roel Rosales,Male,LPDD,Permanent,Technical Works,60,Assign Desktop Computer,7
-Maria Jean Ruth Silvoza,Female,LPDD,Permanent,Technical Works,60,Assign Desktop Computer,8
-Liezl D. Prescillas,,SMD,Permanent,Technical Works,60,Assign Desktop Computer,9
-Jeanelen D. Delos reyes,Female,SMD,Permanent,Technical Works,60,Assign Desktop Computer,10
-Joecel M. Salise,Male,SMD,Permanent,Technical Works,60,Assign Desktop Computer,11
-Ma. Jessa L. Serviano,Female,ENGP,Permanent,Technical Works,60,Assign Desktop Computer,12
-Martin Ross P. Mordeno,Male,PMD,Permanent,Technical,60,Assign Desktop Computer,13
-Jane B. Diaz,Female,CDD,Permanent,Technical,60,Assign Desktop Computer,14
-Olive Ruth B. Esteban,Female,SMD,Permanent,Technical works,60,Assign Desktop Computer,15
-ELIZABETH S. BOQUE,Female,SMD,Permanent,Technical works,60,Assign Desktop Computer,16
-Elia L. Mission,Female,SMD,Permanent,Technical work,60,Assign Desktop Computer,17
-Jerramae L. Magdalera,Female,ARDTS,Permanent,technical work,60,Assign Desktop Computer,18
-Noemi N. Luzon,Female,SMD,Permanent,Technical work,60,Assign Desktop Computer,19
-Loi Marie B. Olaguir,Female,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,20
-Regein G. Calusag,Female,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,21
-Marlyn Delos Arcos,Female,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,22
-Analuo R.Rubi,Female,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,23
-Roxan P. Lunasin,Male,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,24
-Joy C. Orozco,Female,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,25
-0Liza J. Maturan,Female,CDD,Permanent,Technical Works ,60,Assign Desktop Computer,26
-Hanzel R. Aleria,Male,CDD,Permanent,Technical works,60,Assign Desktop Computer,27
-Jeff Dalton Ramirez,Male,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,28
-Jerome G. Salvador,Male,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,29
-Cleofie J. Aranas,Female,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,30
-Cleofe J. Aranas,Female,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,31
-Almar R. Rivera,Male,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,32
-Nida E. Balberan,Female,ENGP,Permanent,technical work,60,Assign Desktop Computer,33
-Maria Luisa L. Reyes,Female,LPDD,Permanent,technical work,60,Assign Desktop Computer,34
-Crista Jane n. Baltazar,Female,SMD,Permanent,technical work,60,Assign Desktop Computer,35
-Valentine Mercy S. Morales,Female,LEGAL,Permanent,technical work,60,Assign Desktop Computer,36
-Elouiszabeth S. Gupong,Female,CDD,Permanent,technical work,60,Assign Desktop Computer,37
-Jessie  M. Coraler,Female,ED,Permanent,Technical work,60,Assign Desktop Computer,38
-Philip C. Baltazar,Male,CDD,Permanent,Technical work,60,Assign Desktop Computer,39
-Celiri J. Sapid,Male,ED,Permanent,Technical work,60,Assign Desktop Computer,40
-Jholyvil C. Embat,Female,CDD,Permanent,technical work,60,Assign Desktop Computer,41
-Gande G. Bagot,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,42
-Irene Valdez,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,43
-Ana Baena Pedalizo,Female,Finance,Permanent,administrative work,50,Assign Desktop Computer,44
-Ervin Shane T. Zabate,Male,Admin Division,Permanent,administrative work,50,Assign Desktop Computer,45
-"Ervin Shane T. Zabate, Ivy Calooy and Mario Acido",Male,Admin Division,Permanent,administrative work,50,Assign Desktop Computer,46
-Kay Dalogdog,Female,LEGAL,Permanent,Administrative Works,50,Assign Desktop Computer,47
-Atty. Galano,Male,LEGAL,Permanent,Administrative Works,50,Assign Desktop Computer,48
-Regina Charito C. Ga,Female,RSCIG,Permanent,Administrative Works,50,Assign Desktop Computer,49
-Beverly Mae Aparre,Female,PMD,Permanent,Administrative Works,50,Assign Desktop Computer,50
-45000,Female,ORED,Permanent,Administrative Works,50,Assign Desktop Computer,51
-Office of the OARDTS-Atty. Oja,Male,ARDMS,Permanent,Administrative Works / Clerical,50,Assign Desktop Computer,52
-Madelyn R. Tautjo,Female,ED,Permanent,Administrative Works,50,Assign Desktop Computer,53
-Gjielda Beb M. Belarmino,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,54
-Nestlie May G. Braza,Female,ORED,Permanent,administrative work,50,Assign Desktop Computer,55
-Jeric S. Lancian,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,56
-Joyla Malayan,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,57
-Marquitos Abundo,Male,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,58
-Emmanuel D. Albano,Male,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,59
-Angie Fundar,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,60
-Charmeline salamania,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,61
-Adabel B. Pelayo,Female,LPDD,Permanent,Administrative Works ,50,Assign Desktop Computer,62
-0Glenda R. Padullon,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,63
-Liza J. Maturan,Female,CDD,Permanent,Administrative Works / Clerical,50,Assign Desktop Computer,64
-Sugar E. Peras,Female,PMD,Permanent,Administrative Works,50,Assign Desktop Computer,65
-Joan A. Ruales,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,66
-Rose L. Eben,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,67
-Rochelle P. Sajulga,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,68
-Julian Ann M. Batohinog,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,69
-Flor Maestre,,SMD,Casual,Technical Works,45,Assign Desktop or Laptop,70
-Olive Ruth Esteban,Female,SMD,Casual,Technical Works,45,Assign Desktop or Laptop,71
-Genalyn A. Tajonera,Female,LEGAL,Permanent,Legal Document,40,Assign Desktop or Laptop,72
-PMD,Male,PMD,Permanent,ICT,40,Assign Desktop or Laptop,73
-Jennifer  E. Sumagaysay ,Male,ED,Contract of Service / Job Order,Technical Works,40,Assign Desktop or Laptop,74
-Geeva Mae T. Rulona,Female,Finance,Contract of Service / Job Order,Technical Works,40,Assign Desktop or Laptop,75
-Christian Yancy A. Yurong,Male,CDD,Contract of Service / Job Order,Technical Works,40,Assign Desktop or Laptop,76
-Jame Bryle A. Goloran,Male,CDD,Contract of Service / Job Order,Technical Works / IS Operators,40,Assign Desktop or Laptop,77
-Chevelle S. Burdeos,Female,CDD,Contract of Service / Job Order,Technical Works / IS Operators,40,Assign Desktop or Laptop,78
-James Ian Jancinal,Male,SMD,Contract of Service,Technical Works,40,Assign Desktop or Laptop,79
-Philip Baltazar,Female,CDD,Contract of Service / Job Order,Technical Works / IS Operators,40,Assign Desktop or Laptop,80
-Atty. Elixir C. Langanlangan,Male,LEGAL,Permanent,Legal Documents,40,Assign Desktop or Laptop,81
-Nouie Evan L. Alindogan,Male,CDD,Contract of Service / Job Order,Technical Works,40,Assign Desktop or Laptop,82
-Nicole Manabar,Female,CDD,Contract of Service / Job Order,Technical Works / IS Operators,40,Assign Desktop or Laptop,83
-Atty. Claudio A. Nistal Jr.,Male,ARDMS,Permanent,ARD for Management Services,40,Assign Desktop or Laptop,84
-Mary Grace B. Cepeda,Female,Admin Division,Casual,Administrative Works,35,Assign Desktop or Laptop,85
-Eric C. Celle,,ARDMS,Contract of Service,Administrative Works,30,Assign Desktop or Laptop,86
-Herms L. Pelayo,Female,PMD,Contract of Service,Administrative Works,30,Assign Desktop or Laptop,87
-Bobbie T. Labastilla,Male,LEGAL,Contract of Service,Administrative Works,30,Assign Desktop or Laptop,88
-Mark Bryan O. Encarnado,Male,RSCIG,Contract of Service / Job Order,Administrative Works,30,Assign Desktop or Laptop,89
-Jimboy G. Edig,Male,Admin Division,Contract of Service / Job Order,Administrative Works,30,Assign Desktop or Laptop,90
-Lams Hub,,SMD,,Technical Works,30,Assign Desktop or Laptop,91
-Julian Ann Batohiong,Female,Admin Division,Contract of Service / Job Order,Administrative Works,30,Assign Desktop or Laptop,92
-Bea Elaine A. Haya,Female,LEGAL,Contract of Service / Job Order,Legal Documents,20,No Procurement - Shared workstation sufficient,93
-LamSserver,,SMD,,,10,No Procurement - Shared workstation sufficient,94
-MR to Liezl Precillas,,SMD,,,10,No Procurement - Shared workstation sufficient,95
-Elouiszabet S. Gupong,,CDD,,,10,No Procurement - Shared workstation sufficient,96
+Eirlen M. Uy,Female,PMD,Permanent,Technical Works,60,Assign Desktop Computer,1
+Gande Bagot,Female,LEGAL,Permanent,Technical Works,60,Assign Desktop Computer,2
+Jewel D. Padullon,Female,ED,Permanent,Technical Works,60,Assign Desktop Computer,3
+Jeterlyn Dane V. Somoio,Female,ED,Permanent,Technical Works,60,Assign Desktop Computer,4
+Rosemarie Plaza Salvador,Female,LPDD,Permanent,Technical Works,60,Assign Desktop Computer,5
+Claudiness Anne Coloso,Female,SMD,Permanent,Technical Works,60,Assign Desktop Computer,6
+Lolita Cabilitasan,Female,SMD,Permanent,Technical Works,60,Assign Desktop Computer,7
+Romeo Araojo Jr.,Male,LPDD,Permanent,Technical Works,60,Assign Desktop Computer,8
+Joedel Siangco,Male,SMD,Permanent,Technical Works,60,Assign Desktop Computer,9
+"Liez""l D. Prescillas",Female,SMD,Permanent,Technical Works,60,Assign Desktop Computer,10
+Shiela Ugat,Female,SMD,Permanent,Technical Works,60,Assign Desktop Computer,11
+Jeanelen D. Delos Reyes,Female,SMD,Permanent,Technical Works,60,Assign Desktop Computer,12
+Cleofe J. Aranas,Female,CDD,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,13
+Maria Luisa L. Reyes,Female,LPDD,Permanent,technical work,60,Assign Desktop Computer,14
+Crista Jane n. Baltazar,Female,SMD,Permanent,technical work,60,Assign Desktop Computer,15
+Luis P. Gonzaga,Male,ENGP,Permanent,Technical Works / IS Operators,60,Assign Desktop Computer,16
+Philip C. Baltazar,Male,CDD,Permanent,Technical work,60,Assign Desktop Computer,17
+Jessie  M. Coraler,Female,ED,Permanent,Technical work,60,Assign Desktop Computer,18
+ELIZABETH S. BOQUE,Female,SMD,Permanent,Technical works,60,Assign Desktop Computer,19
+Celiri J. Sapid,Male,ED,Permanent,Technical work,60,Assign Desktop Computer,20
+Alma R. Rivera,Female,CDD,Permanent,Technical,60,Assign Desktop Computer,21
+Olive Ruth B. Esteban,Female,SMD,Permanent,Technical works,60,Assign Desktop Computer,22
+WENNIELYN MUSICO,Female,SMD,Permanent,Technical Works,60,Assign Desktop Computer,23
+Adabel B. Pelayo,Female,LPDD,Permanent,Administrative Works ,50,Assign Desktop Computer,24
+Adabel Pelayo/Jedau E. Ozarraga,Female,LPDD,Permanent,Administrative Works ,50,Assign Desktop Computer,25
+May B. Esclamado,Female,PMD,Permanent,Administrative Works,50,Assign Desktop Computer,26
+Ralph Robert O. Burdeos,Male,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,27
+"Claudio A. Nistal, Jr.",Male,ARDMS,Permanent,administrative work,50,Assign Desktop Computer,28
+Gjielda Beb M. Belarmino,Female,Admin Division,Permanent,Administrative Works,50,Assign Desktop Computer,29
+MARY KATHLEEN P. PO,Female,PMD,Permanent,administrative work,50,Assign Desktop Computer,30
+Sugar E. Peras,Female,PMD,Permanent,Administrative Works,50,Assign Desktop Computer,31
+Virnon Giefred C. Plaza,Male,Admin Division,Casual,administrative work,35,Assign Desktop or Laptop,32

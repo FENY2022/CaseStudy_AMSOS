@@ -30,6 +30,142 @@ OUTPUT_DIR = BASE_DIR / 'outputs'
 DESKTOP_COST = 50000
 LAPTOP_COST = 55000
 
+def compute_employee_priority(inv_df):
+    """
+    Determine which unique employees need a computer.
+    Uses employeeName to identify unique employees.
+    """
+    # Deduplicate employees by employeeName
+    unique_emps = inv_df.drop_duplicates(subset='employeeName')
+
+    # Identify employees who already own a Desktop or Laptop
+    comps = inv_df[
+        inv_df['equipmentType'].str.contains('Desktop|Laptop', case=False, na=False)
+    ]
+    emps_with_computer = comps['employeeName'].dropna().unique()
+
+    # Employees needing a computer = all unique employees minus those with a computer
+    needs_computer = unique_emps[~unique_emps['employeeName'].isin(emps_with_computer)].copy()
+
+    employees_no_pc = []
+    for _, row in needs_computer.iterrows():
+        employees_no_pc.append({
+            'employee_name': row['employeeName'],
+            'sex': row.get('sex', 'Unknown'),
+            'office_division': row.get('officeDivision', 'Unknown'),
+            'status_of_employment': row.get('statusOfEmployment', 'Unknown'),
+            'nature_of_work': row.get('natureOfWork', 'Unknown'),
+        })
+
+    return pd.DataFrame(employees_no_pc)
+
+
+def compute_employee_priority_score(df):
+    if df.empty:
+        return df
+
+    def score(row):
+        s = 0
+        status = str(row['status_of_employment']).lower()
+        nature = str(row['nature_of_work']).lower()
+        if 'permanent' in status:
+            s += 30
+        elif 'casual' in status or 'cotractual' in status:
+            s += 15
+        elif 'contract' in status or 'job' in status or 'cos' in status:
+            s += 10
+        if 'technical' in nature:
+            s += 30
+        elif 'administrative' in nature or 'clerical' in nature:
+            s += 20
+        else:
+            s += 10
+        return s
+
+    df['priority_score'] = df.apply(score, axis=1)
+
+    def recommendation(row):
+        score = row['priority_score']
+        nature = str(row['nature_of_work']).lower()
+        if score >= 50:
+            return 'Assign Desktop Computer'
+        elif score >= 30:
+            return 'Assign Desktop or Laptop'
+        else:
+            return 'No Procurement - Shared workstation sufficient'
+
+    df['recommendation'] = df.apply(recommendation, axis=1)
+    df = df.sort_values('priority_score', ascending=False).reset_index(drop=True)
+    df['rank'] = range(1, len(df) + 1)
+    return df
+
+
+def compute_procurement(emp_priority):
+    """
+    Procurement based ONLY on unique employees that need a computer.
+    """
+    rec_counts = emp_priority['recommendation'].value_counts()
+
+    emp_need_desktop = int(rec_counts.get('Assign Desktop Computer', 0))
+    emp_need_either = int(rec_counts.get('Assign Desktop or Laptop', 0))
+    emp_no_proc = int(rec_counts.get('No Procurement - Shared workstation sufficient', 0))
+
+    need_computer = emp_priority[
+        emp_priority['recommendation'].str.contains('Desktop|Laptop', na=False)
+    ]
+    tech_mask = need_computer['nature_of_work'].str.contains(
+        'Technical', case=False, na=False
+    )
+    rec_desktop = int(need_computer[tech_mask].shape[0])
+    rec_laptop = int(need_computer[~tech_mask].shape[0])
+
+    desktop_budget = rec_desktop * DESKTOP_COST
+    laptop_budget = rec_laptop * LAPTOP_COST
+    total_budget = desktop_budget + laptop_budget
+
+    proc = pd.DataFrame([{
+        'category': 'Desktop Computer',
+        'recommended_purchase': rec_desktop,
+        'unit_cost': DESKTOP_COST,
+        'estimated_budget': desktop_budget,
+        'notes': f'Employees needing computer with Technical work: {rec_desktop}'
+    }, {
+        'category': 'Laptop Computer',
+        'recommended_purchase': rec_laptop,
+        'unit_cost': LAPTOP_COST,
+        'estimated_budget': laptop_budget,
+        'notes': f'Employees needing computer with Administrative/other work: {rec_laptop}'
+    }, {
+        'category': 'TOTAL',
+        'recommended_purchase': rec_desktop + rec_laptop,
+        'unit_cost': 0,
+        'estimated_budget': total_budget,
+        'notes': 'Total procurement budget for employees without computer'
+    }])
+
+    return proc
+
+
+def compute_division_shortage(inv_df, div_df):
+    """Count unique employees (by employeeName) with computers per division."""
+    unique_emps = inv_df[['employeeName', 'officeDivision']].drop_duplicates(subset='employeeName')
+
+    comps = inv_df[inv_df['equipmentType'].str.contains('Desktop|Laptop', case=False, na=False)]
+    comps_unique = comps[['employeeName', 'officeDivision']].drop_duplicates(subset='employeeName')
+    comps_per_div = comps_unique.groupby('officeDivision').size().reset_index(name='assigned_computers')
+
+    div_df['Count'] = pd.to_numeric(div_df['Count'], errors='coerce').fillna(0).astype(int)
+    shortage = div_df.merge(comps_per_div, left_on='Division', right_on='officeDivision', how='left')
+    shortage['assigned_computers'] = shortage['assigned_computers'].fillna(0).astype(int)
+    shortage['shortage'] = (shortage['Count'] - shortage['assigned_computers']).clip(lower=0)
+    shortage['recommended_procurement'] = shortage['shortage']
+    shortage = shortage.sort_values('recommended_procurement', ascending=False).reset_index(drop=True)
+
+    result = shortage[['Division', 'Count', 'assigned_computers', 'shortage']]
+    result['replacement_count'] = 0
+    return result
+
+
 @st.cache_resource
 def load_models():
     clf = joblib.load(MODEL_DIR / 'replacement_model.pkl')
@@ -38,15 +174,22 @@ def load_models():
     feature_cols = joblib.load(MODEL_DIR / 'feature_columns.pkl')
     return clf, reg, encoder, feature_cols
 
+
 @st.cache_data
 def load_data():
     inv = pd.read_csv(DATA_DIR / 'inv_inventory.csv', low_memory=False)
     repair = pd.read_csv(DATA_DIR / 'repairhistory.csv', low_memory=False)
     div = pd.read_csv(DATA_DIR / 'division_counts.csv', low_memory=False)
     repl = pd.read_csv(OUTPUT_DIR / 'replacement_priority.csv') if (OUTPUT_DIR / 'replacement_priority.csv').exists() else None
-    emp = pd.read_csv(OUTPUT_DIR / 'employee_priority.csv') if (OUTPUT_DIR / 'employee_priority.csv').exists() else None
-    div_short = pd.read_csv(OUTPUT_DIR / 'division_shortage.csv') if (OUTPUT_DIR / 'division_shortage.csv').exists() else None
-    proc = pd.read_csv(OUTPUT_DIR / 'procurement_recommendation.csv') if (OUTPUT_DIR / 'procurement_recommendation.csv').exists() else None
+
+    # Compute employee priority using corrected unique-employee logic
+    emp = compute_employee_priority(inv)
+    if len(emp) > 0:
+        emp = compute_employee_priority_score(emp)
+    # Compute division shortage using unique employees per division
+    div_short = compute_division_shortage(inv, div)
+    # Compute procurement based ONLY on employees needing a computer
+    proc = compute_procurement(emp) if len(emp) > 0 else None
     return inv, repair, div, repl, emp, div_short, proc
 
 with st.spinner('Loading models and data...'):
@@ -330,21 +473,17 @@ Be specific, use critical reasoning, and provide actionable recommendations."""
             if st.button('💰 Generate AI Procurement Plan', type='primary', use_container_width=True):
                 with st.spinner('AI analyzing data and generating strategic procurement plan...'):
                     if emp_df is not None and div_short is not None and repl_df is not None:
-                        total_short = int(div_short['shortage'].sum())
-                        total_repl = len(repl_df[repl_df['predicted_priority'].isin(['Critical', 'High'])])
                         emp_no_pc = len(emp_df)
 
                         prompt = f"""You are a Government ICT Procurement Strategist. Generate a critical-reasoning-based Procurement Plan.
 
 CURRENT SITUATION:
-- Division Computer Shortage: {total_short} units
-- Assets Requiring Replacement: {total_repl} units
-- Employees Without Computer: {emp_no_pc}
+- Unique Employees Without Computer: {emp_no_pc}
 - Desktop Unit Cost: ₱50,000
 - Laptop Unit Cost: ₱55,000
 
 REQUIREMENTS:
-1. Calculate total procurement needed (shortage + replacement + new employees)
+1. Calculate total procurement needed based on unique employees without computers
 2. Recommend Desktop vs Laptop split with justification
 3. Provide phased implementation plan (Priority 1, 2, 3)
 4. Justify each recommendation with critical reasoning
@@ -551,16 +690,131 @@ elif page == '💰 Procurement Budget':
         """)
 
         st.markdown('---')
+        st.subheader('🤖 AI Procurement Analysis')
+
+        # Compute XAI data from inventory using unique employeeName
+        total_unique_emps = int(inv['employeeName'].nunique())
+
+        desktop_emps = inv[
+            inv['equipmentType'].str.contains('Desktop', case=False, na=False)
+        ]['employeeName'].dropna().unique()
+        laptop_emps = inv[
+            inv['equipmentType'].str.contains('Laptop', case=False, na=False)
+        ]['employeeName'].dropna().unique()
+
+        num_desktop_emps = len(desktop_emps)
+        num_laptop_emps = len(laptop_emps)
+        # Employees with both Desktop and Laptop should be counted once
+        assigned_computer_emps = len(set(desktop_emps) | set(laptop_emps))
+        employees_no_pc = len(emp_df) if emp_df is not None else (total_unique_emps - assigned_computer_emps)
+
+        desktop_rec = int(items[items['category'] == 'Desktop Computer']['recommended_purchase'].values[0])
+        laptop_rec = int(items[items['category'] == 'Laptop Computer']['recommended_purchase'].values[0])
+        total_rec = int(total_row['recommended_purchase'].values[0])
+        total_budget_val = int(total_row['estimated_budget'].values[0])
+        desktop_budget_val = int(items[items['category'] == 'Desktop Computer']['estimated_budget'].values[0])
+        laptop_budget_val = int(items[items['category'] == 'Laptop Computer']['estimated_budget'].values[0])
+
+        # Detect duplicates
+        total_records = len(inv)
+        duplicate_records = total_records - total_unique_emps
+
+        with st.container(border=True):
+            st.markdown("**📊 AI Procurement Analysis**")
+            st.markdown(f"""
+| Metric | Count |
+|--------|------:|
+| Total Unique Employees | **{total_unique_emps:,}** |
+| Employees with Desktop Computers | **{num_desktop_emps:,}** |
+| Employees with Laptop Computers | **{num_laptop_emps:,}** |
+| Employees already assigned a computer | **{assigned_computer_emps:,}** |
+| Employees without any computer | **{employees_no_pc:,}** |
+| Recommended Desktop Purchases | **{desktop_rec:,} units** |
+| Recommended Laptop Purchases | **{laptop_rec:,} units** |
+""")
+
+            st.markdown("**💰 Cost Breakdown**")
+            st.markdown(f"""
+| Item | Calculation | Amount |
+|------|------------|-------:|
+| Desktop Cost | {desktop_rec:,} × ₱{DESKTOP_COST:,} | **₱{desktop_budget_val:,}** |
+| Laptop Cost | {laptop_rec:,} × ₱{LAPTOP_COST:,} | **₱{laptop_budget_val:,}** |
+| **Total Procurement Budget** | | **₱{total_budget_val:,}** |
+""")
+
+            st.markdown("**📝 Reason for Recommendation**")
+            reason = (
+                f"The system detected **{total_unique_emps:,}** unique employees across all divisions. "
+                f"Out of these, **{assigned_computer_emps:,}** employees already have assigned computers "
+                f"(**{num_desktop_emps:,}** with Desktop, **{num_laptop_emps:,}** with Laptop). "
+                f"After removing duplicate employee records and validating computer ownership, "
+                f"**{employees_no_pc:,}** employees {'was' if employees_no_pc == 1 else 'were'} identified "
+                f"{'without any assigned computer' if employees_no_pc == 1 else 'without any assigned computer'}. "
+                f"Based on the agency's standard procurement costs of ₱{DESKTOP_COST:,} per Desktop and "
+                f"₱{LAPTOP_COST:,} per Laptop, the estimated procurement budget is **₱{total_budget_val:,}**."
+            )
+            st.markdown(reason)
+
+            if duplicate_records > 0:
+                st.info(
+                    f"📌 Duplicate employee inventory records were detected and consolidated into "
+                    f"**{total_unique_emps:,}** unique employees to avoid overestimating procurement requirements."
+                )
+
+            with st.expander("**How was this calculated?**"):
+                st.markdown("**Formula Used:**")
+                st.markdown("""
+```
+Unique Employees
+        ↓
+Employees with Desktop / Laptop
+        ↓
+Employees without Computer
+        ↓
+Recommended Purchase
+        ↓
+Recommended Purchase × Unit Cost
+        ↓
+Estimated Budget
+```
+""")
+                st.markdown("**Actual Computation:**")
+                st.markdown(f"""
+```
+{desktop_rec:,} Desktop × ₱{DESKTOP_COST:,}
+= ₱{desktop_budget_val:,}
+
+{laptop_rec:,} Laptop × ₱{LAPTOP_COST:,}
+= ₱{laptop_budget_val:,}
+
+Grand Total
+
+₱{desktop_budget_val:,}
++
+₱{laptop_budget_val:,}
+-----------------
+₱{total_budget_val:,}
+```
+""")
+
+            confidence = st.columns([1, 4])
+            with confidence[0]:
+                st.markdown("**Confidence:**")
+            with confidence[1]:
+                st.markdown("✅ **High**")
+            st.caption(
+                "The recommendation is based on unique employee records, existing ICT inventory "
+                "assignments, and standardized procurement costs."
+            )
+
+        st.markdown('---')
         st.subheader('🤖 AI Budget Analysis')
         if ollama_models:
             if st.button('📊 Generate AI Budget Analysis', type='primary', use_container_width=True):
                 budget_total = int(total_row['estimated_budget'].values[0])
                 desktop_units = int(items[items['category']=='Desktop Computer']['recommended_purchase'].values[0])
                 laptop_units = int(items[items['category']=='Laptop Computer']['recommended_purchase'].values[0])
-                total_short = int(div_short['shortage'].sum()) if div_short is not None else 0
                 emp_no_pc = len(emp_df) if emp_df is not None else 0
-                repl_critical = len(repl_df[repl_df['predicted_priority']=='Critical']) if repl_df is not None else 0
-                repl_high = len(repl_df[repl_df['predicted_priority']=='High']) if repl_df is not None else 0
 
                 prompt = f"""You are a Senior ICT Procurement and Budget Analyst. Analyze the following procurement budget data and provide strategic insights.
 
@@ -570,10 +824,7 @@ BUDGET DATA:
 - Laptop Computers: {laptop_units} units @ ₱{LAPTOP_COST:,} = ₱{laptop_units * LAPTOP_COST:,}
 
 ADDITIONAL CONTEXT:
-- Division Computer Shortage: {total_short} units
-- Employees Without Computer: {emp_no_pc}
-- Critical Priority Assets: {repl_critical}
-- High Priority Assets: {repl_high}
+- Unique Employees Without Computer: {emp_no_pc}
 
 Provide a structured analysis covering:
 1. **Budget Adequacy** - Is the budget sufficient to address all needs?
@@ -668,13 +919,11 @@ Answer questions about asset replacement planning, procurement needs, division s
 
             'Procurement Advisor': f"""You are a Government ICT Procurement Advisor. Analyze the following data to provide procurement recommendations:
 
-Total Employees without computer: {len(emp_df) if emp_df is not None else 0}
-Division Computer Shortage: {int(div_short['shortage'].sum()) if div_short is not None else 0}
-Assets needing replacement (Critical+High): {len(repl_df[repl_df['predicted_priority'].isin(['Critical','High'])]) if repl_df is not None else 0}
+Unique Employees without computer: {len(emp_df) if emp_df is not None else 0}
 
 Unit costs: Desktop = ₱{DESKTOP_COST:,}, Laptop = ₱{LAPTOP_COST:,}
 
-Provide budget estimates, procurement priorities, and justification for each recommendation.""",
+Provide budget estimates, procurement priorities, and justification for each recommendation. Base recommendations on unique employees that need a computer, not on inventory record counts.""",
 
             'Maintenance Expert': f"""You are an ICT Maintenance and Repair Expert. You have:
 - {len(repair)} total repair records

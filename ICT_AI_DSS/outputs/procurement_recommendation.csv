@@ -1,4 +1,4 @@
 category,recommended_purchase,unit_cost,estimated_budget,notes
-Desktop Computer,798,50000,39900000,Covers shortage (106) + replacements (600) + employees needing desktop (92)
-Laptop Computer,23,55000,1265000,Employees needing laptop: 23
-TOTAL,821,0,41165000,Total procurement budget needed
+Desktop Computer,23,50000,1150000,Employees needing computer with Technical work: 23
+Laptop Computer,9,55000,495000,Employees needing computer with Administrative/other work: 9
+TOTAL,32,0,1645000,Total procurement budget for employees without computer
