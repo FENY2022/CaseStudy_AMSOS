@@ -166,6 +166,206 @@ def compute_division_shortage(inv_df, div_df):
     return result
 
 
+# === PROCUREMENT REDESIGN: Equipment costs and analysis functions ===
+
+# Standard unit costs for all procurement items
+EQUIPMENT_COSTS = {
+    'Desktop Computer': 50000,
+    'Laptop Computer': 55000,
+    'Printer': 15000,
+    'Scanner': 12000,
+    'Monitor': 8000,
+    'UPS': 5000,
+    'Projector': 25000,
+    'Router': 3000,
+    'Switch': 4000,
+    'CCTV': 10000,
+}
+
+ALL_PROCUREMENT_ITEMS = [
+    'Desktop Computer', 'Laptop Computer', 'Printer', 'Scanner',
+    'Monitor', 'UPS', 'Projector', 'Router', 'Switch', 'CCTV'
+]
+
+
+def build_employee_equipment_map(inv_df):
+    """
+    Build a mapping of unique employees to their owned equipment.
+    Step 1: Remove duplicate employee names so each employee is counted once.
+    Step 2: Collect the set of equipment each employee owns.
+    """
+    # Deduplicate by employeeName – each employee is one person
+    unique_emps = inv_df[[
+        'employeeName', 'officeDivision', 'sex', 'statusOfEmployment', 'natureOfWork'
+    ]].drop_duplicates(subset='employeeName').reset_index(drop=True)
+
+    # Group equipment types owned by each unique employee
+    emp_equip = inv_df.groupby('employeeName')['equipmentType'].apply(
+        lambda x: set(x.dropna())
+    ).reset_index()
+    emp_equip.columns = ['employeeName', 'equipment_set']
+
+    # Merge back; employees with no inventory records get an empty set
+    result = unique_emps.merge(emp_equip, on='employeeName', how='left')
+    result['equipment_set'] = result['equipment_set'].apply(
+        lambda s: s if isinstance(s, set) else set()
+    )
+    return result
+
+
+def get_missing_items(equipment_set, selected_items):
+    """Return list of selected items the employee does NOT own."""
+    owned = equipment_set
+    missing = []
+    for item in selected_items:
+        # Normalise: treat 'Laptop Computers' (inventory) as 'Laptop Computer' (preference)
+        item_variants = [item]
+        if item == 'Laptop Computer':
+            item_variants.append('Laptop Computers')
+        if item == 'Desktop Computer':
+            item_variants.append('Desktop Computer')
+        has_item = any(v in owned for v in item_variants)
+        if not has_item:
+            missing.append(item)
+    return missing
+
+
+def generate_reason(employee_name, equipment_set, missing_items):
+    """Generate an XAI reason explaining why procurement is recommended."""
+    owned_desktop = any(v in equipment_set for v in ['Desktop Computer'])
+    owned_laptop = any(v in equipment_set for v in ['Laptop Computer', 'Laptop Computers'])
+    owned_printer = 'Printer' in equipment_set
+    owned_scanner = 'Scanner' in equipment_set
+    owned_monitor = 'Monitor' in equipment_set
+    owned_cctv = 'CCTV / IP CAMERA' in equipment_set or 'CCTV' in equipment_set
+
+    if not owned_desktop and not owned_laptop:
+        return "Employee has no assigned Desktop or Laptop computer."
+    if not owned_desktop and owned_laptop:
+        return "Employee has a Laptop but no Desktop computer."
+    if owned_desktop and not owned_laptop:
+        return "Employee has a Desktop but no Laptop computer."
+
+    # For non-computer items
+    missing_names = [m for m in missing_items if m not in ['Desktop Computer', 'Laptop Computer']]
+    if missing_names:
+        return f"Employee lacks the following equipment: {', '.join(missing_names)}."
+
+    return "Employee requires additional ICT equipment."
+
+
+def analyze_office_procurement(emp_map, selected_items):
+    """
+    Group employees by officeDivision and compute procurement statistics.
+    Returns DataFrame ranked by highest need.
+    """
+    records = []
+    for office, group in emp_map.groupby('officeDivision'):
+        total = len(group)
+        with_desktop = group['equipment_set'].apply(
+            lambda s: any(v in s for v in ['Desktop Computer'])
+        ).sum()
+        with_laptop = group['equipment_set'].apply(
+            lambda s: any(v in s for v in ['Laptop Computer', 'Laptop Computers'])
+        ).sum()
+        with_computer = group['equipment_set'].apply(
+            lambda s: any(v in s for v in ['Desktop Computer', 'Laptop Computer', 'Laptop Computers'])
+        ).sum()
+        without_computer = total - with_computer
+
+        # Count employees missing each selected item
+        rec_counts = {}
+        for item in selected_items:
+            count = group['equipment_set'].apply(
+                lambda s, i=item: len(get_missing_items(s, [i])) > 0
+            ).sum()
+            rec_counts[f'rec_{item}'] = count
+
+        # Compute budget for this office
+        budget = 0
+        for item in selected_items:
+            cnt = rec_counts.get(f'rec_{item}', 0)
+            cost = EQUIPMENT_COSTS.get(item, 0)
+            budget += cnt * cost
+
+        records.append({
+            'Office': office,
+            'Total Employees': total,
+            'Employees with Desktop': int(with_desktop),
+            'Employees with Laptop': int(with_laptop),
+            'Employees with Computer': int(with_computer),
+            'Employees without Computer': int(without_computer),
+            **{k: int(v) for k, v in rec_counts.items()},
+            'Estimated Budget': int(budget),
+        })
+
+    offices_df = pd.DataFrame(records)
+    if not offices_df.empty:
+        offices_df = offices_df.sort_values(
+            'Employees without Computer', ascending=False
+        ).reset_index(drop=True)
+        offices_df['Rank'] = range(1, len(offices_df) + 1)
+
+        # Assign priority label
+        max_need = offices_df['Employees without Computer'].max()
+        if max_need > 0:
+            def priority_label(row):
+                need = row['Employees without Computer']
+                if need >= max_need * 0.5:
+                    return 'HIGH'
+                elif need >= max_need * 0.2:
+                    return 'MEDIUM'
+                else:
+                    return 'LOW'
+            offices_df['Priority'] = offices_df.apply(priority_label, axis=1)
+        else:
+            offices_df['Priority'] = 'LOW'
+    return offices_df
+
+
+def generate_procurement_list(emp_map, selected_items):
+    """
+    Generate a per-employee procurement recommendation list with reasons.
+    """
+    records = []
+    for _, row in emp_map.iterrows():
+        missing = get_missing_items(row['equipment_set'], selected_items)
+        if not missing:
+            continue
+        # Compute total cost
+        total_cost = sum(EQUIPMENT_COSTS.get(item, 0) for item in missing)
+        reason = generate_reason(row['employeeName'], row['equipment_set'], missing)
+        records.append({
+            'Employee': row['employeeName'],
+            'Office': row['officeDivision'],
+            'Current Equipment': ', '.join(sorted(row['equipment_set'])) if row['equipment_set'] else 'None',
+            'Missing Equipment': ', '.join(missing),
+            'Recommended Procurement': ', '.join(missing),
+            'Estimated Cost': int(total_cost),
+            'Reason': reason,
+        })
+    rec_df = pd.DataFrame(records)
+    if not rec_df.empty:
+        rec_df = rec_df.sort_values('Estimated Cost', ascending=False).reset_index(drop=True)
+    return rec_df
+
+
+def compute_procurement_summary(procurement_list, selected_items):
+    """
+    Compute total procurement summary from the recommendation list.
+    """
+    summary = {}
+    for item in selected_items:
+        cnt = procurement_list['Missing Equipment'].str.contains(
+            item, regex=False
+        ).sum() if not procurement_list.empty else 0
+        cost = EQUIPMENT_COSTS.get(item, 0)
+        summary[item] = {'units': cnt, 'unit_cost': cost, 'total': cnt * cost}
+    total_units = sum(v['units'] for v in summary.values())
+    total_budget = sum(v['total'] for v in summary.values())
+    return summary, total_units, total_budget
+
+
 @st.cache_resource
 def load_models():
     clf = joblib.load(MODEL_DIR / 'replacement_model.pkl')
@@ -652,117 +852,279 @@ elif page == '🏢 Division Shortage':
         st.warning('Division shortage data not found.')
 
 elif page == '💰 Procurement Budget':
-    st.title('💰 Procurement Recommendation & Budget')
+    st.title('💰 Explainable AI Procurement Decision Support')
     st.markdown('---')
 
+    # ── Sidebar: Procurement Preference ──
+    st.sidebar.markdown('---')
+    st.sidebar.subheader('🛒 Procurement Preference')
+    selected_items = st.sidebar.multiselect(
+        'Select items to procure',
+        ALL_PROCUREMENT_ITEMS,
+        default=['Desktop Computer', 'Laptop Computer'],
+        key='proc_items'
+    )
+    st.sidebar.caption(f'{len(selected_items)} item(s) selected')
+
     if ollama_models:
-        budget_ai_model = st.sidebar.selectbox('🧠 Budget AI Model', ollama_models,
-                                                index=ollama_models.index('qwen3:latest') if 'qwen3:latest' in ollama_models else 0,
-                                                key='budget_ai_model')
+        budget_ai_model = st.sidebar.selectbox(
+            '🧠 Budget AI Model', ollama_models,
+            index=ollama_models.index('qwen3:latest') if 'qwen3:latest' in ollama_models else 0,
+            key='budget_ai_model'
+        )
         st.sidebar.caption(f'Model: {budget_ai_model}')
 
-    if proc is not None:
-        total_row = proc[proc['category'] == 'TOTAL']
-        items = proc[proc['category'] != 'TOTAL']
-        st.metric('Total Estimated Budget', f'₱{int(total_row["estimated_budget"].values[0]):,}',
-                  delta=f'{int(total_row["recommended_purchase"].values[0])} units')
+    if not selected_items:
+        st.info('👈 Please select at least one procurement item from the sidebar.')
+    else:
+        # ── Build employee equipment map (unique employees only) ──
+        emp_map = build_employee_equipment_map(inv)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader('Recommended Procurement')
-            st.dataframe(items, use_container_width=True)
-        with col2:
-            fig, ax = plt.subplots(figsize=(8, 5))
-            bars = ax.bar(items['category'], items['estimated_budget'],
-                          color=['#2d5a27', '#6abf69'], edgecolor='white', width=0.5)
-            ax.set_title('Estimated Budget Breakdown', fontweight='bold')
-            ax.set_ylabel('Budget (₱)')
-            for bar, val in zip(bars, items['estimated_budget']):
-                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 100000,
-                        f'₱{val:,}', ha='center', fontweight='bold')
-            st.pyplot(fig)
+        total_unique_emps = len(emp_map)
+        total_inv_records = len(inv)
+        duplicate_records = total_inv_records - total_unique_emps
 
-        st.subheader('Budget Summary')
-        st.info(f"""
-        - **Desktop Computers**: {int(items[items['category']=='Desktop Computer']['recommended_purchase'].values[0])} units @ ₱{DESKTOP_COST:,} = ₱{int(items[items['category']=='Desktop Computer']['estimated_budget'].values[0]):,}
-        - **Laptop Computers**: {int(items[items['category']=='Laptop Computer']['recommended_purchase'].values[0])} units @ ₱{LAPTOP_COST:,} = ₱{int(items[items['category']=='Laptop Computer']['estimated_budget'].values[0]):,}
-        - **Grand Total**: ₱{int(total_row['estimated_budget'].values[0]):,}
-        """)
+        # ── Compute all analysis from selected preferences ──
+        offices_df = analyze_office_procurement(emp_map, selected_items)
+        procurement_list = generate_procurement_list(emp_map, selected_items)
+        summary, total_units, total_budget = compute_procurement_summary(procurement_list, selected_items)
 
+        # ── Top-level metric ──
+        st.metric(
+            'Total Estimated Procurement Budget',
+            f'₱{total_budget:,}',
+            delta=f'{total_units} unit{"s" if total_units != 1 else ""}'
+        )
+
+        # ═══════════════════════════════════════════════════════
+        # SECTION 1: AI PROCUREMENT ANALYSIS
+        # ═══════════════════════════════════════════════════════
         st.markdown('---')
         st.subheader('🤖 AI Procurement Analysis')
 
-        # Compute XAI data from inventory using unique employeeName
-        total_unique_emps = int(inv['employeeName'].nunique())
-
-        desktop_emps = inv[
-            inv['equipmentType'].str.contains('Desktop', case=False, na=False)
-        ]['employeeName'].dropna().unique()
-        laptop_emps = inv[
-            inv['equipmentType'].str.contains('Laptop', case=False, na=False)
-        ]['employeeName'].dropna().unique()
-
-        num_desktop_emps = len(desktop_emps)
-        num_laptop_emps = len(laptop_emps)
-        # Employees with both Desktop and Laptop should be counted once
-        assigned_computer_emps = len(set(desktop_emps) | set(laptop_emps))
-        employees_no_pc = len(emp_df) if emp_df is not None else (total_unique_emps - assigned_computer_emps)
-
-        desktop_rec = int(items[items['category'] == 'Desktop Computer']['recommended_purchase'].values[0])
-        laptop_rec = int(items[items['category'] == 'Laptop Computer']['recommended_purchase'].values[0])
-        total_rec = int(total_row['recommended_purchase'].values[0])
-        total_budget_val = int(total_row['estimated_budget'].values[0])
-        desktop_budget_val = int(items[items['category'] == 'Desktop Computer']['estimated_budget'].values[0])
-        laptop_budget_val = int(items[items['category'] == 'Laptop Computer']['estimated_budget'].values[0])
-
-        # Detect duplicates
-        total_records = len(inv)
-        duplicate_records = total_records - total_unique_emps
+        # Compute computer-specific stats for the narrative
+        emps_with_desktop = emp_map['equipment_set'].apply(
+            lambda s: 'Desktop Computer' in s
+        ).sum()
+        emps_with_laptop = emp_map['equipment_set'].apply(
+            lambda s: any(v in s for v in ['Laptop Computer', 'Laptop Computers'])
+        ).sum()
+        emps_with_computer = emp_map['equipment_set'].apply(
+            lambda s: any(v in s for v in ['Desktop Computer', 'Laptop Computer', 'Laptop Computers'])
+        ).sum()
+        emps_without_computer = total_unique_emps - emps_with_computer
 
         with st.container(border=True):
-            st.markdown("**📊 AI Procurement Analysis**")
-            st.markdown(f"""
-| Metric | Count |
-|--------|------:|
-| Total Unique Employees | **{total_unique_emps:,}** |
-| Employees with Desktop Computers | **{num_desktop_emps:,}** |
-| Employees with Laptop Computers | **{num_laptop_emps:,}** |
-| Employees already assigned a computer | **{assigned_computer_emps:,}** |
-| Employees without any computer | **{employees_no_pc:,}** |
-| Recommended Desktop Purchases | **{desktop_rec:,} units** |
-| Recommended Laptop Purchases | **{laptop_rec:,} units** |
-""")
+            # ── Metrics table ──
+            cols = st.columns(4)
+            cols[0].metric('Total Unique Employees', f'{total_unique_emps:,}')
+            cols[1].metric('Duplicate Records Removed', f'{duplicate_records:,}')
+            cols[2].metric('Employees with Computer', f'{emps_with_computer:,}')
+            cols[3].metric('Employees without Computer', f'{emps_without_computer:,}')
 
-            st.markdown("**💰 Cost Breakdown**")
-            st.markdown(f"""
-| Item | Calculation | Amount |
-|------|------------|-------:|
-| Desktop Cost | {desktop_rec:,} × ₱{DESKTOP_COST:,} | **₱{desktop_budget_val:,}** |
-| Laptop Cost | {laptop_rec:,} × ₱{LAPTOP_COST:,} | **₱{laptop_budget_val:,}** |
-| **Total Procurement Budget** | | **₱{total_budget_val:,}** |
-""")
+            cols2 = st.columns(3)
+            cols2[0].metric('Employees with Desktop', f'{int(emps_with_desktop):,}')
+            cols2[1].metric('Employees with Laptop', f'{int(emps_with_laptop):,}')
+            if procurement_list is not None and not procurement_list.empty:
+                cols2[2].metric('Employees Needing Procurement', f'{len(procurement_list):,}')
 
-            st.markdown("**📝 Reason for Recommendation**")
-            reason = (
-                f"The system detected **{total_unique_emps:,}** unique employees across all divisions. "
-                f"Out of these, **{assigned_computer_emps:,}** employees already have assigned computers "
-                f"(**{num_desktop_emps:,}** with Desktop, **{num_laptop_emps:,}** with Laptop). "
-                f"After removing duplicate employee records and validating computer ownership, "
-                f"**{employees_no_pc:,}** employees {'was' if employees_no_pc == 1 else 'were'} identified "
-                f"without any assigned computer. "
-                f"Based on the agency's standard procurement costs of ₱{DESKTOP_COST:,} per Desktop and "
-                f"₱{LAPTOP_COST:,} per Laptop, the estimated procurement budget is **₱{total_budget_val:,}**."
+            # ── Natural language explanation ──
+            st.markdown('**📝 Reason for Recommendation**')
+
+            selected_names = ', '.join(selected_items)
+            reason_parts = [
+                f"The system analyzed **{total_unique_emps:,}** unique employees across all offices."
+            ]
+            if duplicate_records > 0:
+                reason_parts.append(
+                    "Duplicate employee inventory records were automatically consolidated before computation."
+                )
+            reason_parts.append(
+                f"After validating all Desktop and Laptop assignments:"
             )
-            st.markdown(reason)
+            reason_parts.append(
+                f"• **{int(emps_with_desktop):,}** employees already have Desktop Computers."
+            )
+            reason_parts.append(
+                f"• **{int(emps_with_laptop):,}** employees already have Laptop Computers."
+            )
+            reason_parts.append(
+                f"• **{emps_with_computer:,}** employees already have at least one computer."
+            )
+            reason_parts.append(
+                f"• **{emps_without_computer:,}** employees {'still require' if emps_without_computer != 1 else 'still requires'} ICT equipment."
+            )
 
+            if selected_items:
+                items_desc = ', '.join(selected_items)
+                reason_parts.append(
+                    f"Based on the selected procurement preference ({items_desc}), "
+                    f"the AI recommends purchasing:"
+                )
+                for item in selected_items:
+                    cnt = summary.get(item, {}).get('units', 0)
+                    reason_parts.append(f"• **{item}s**: {cnt:,}")
+
+            reason_text = '\n\n'.join(reason_parts)
+            st.markdown(reason_text)
+
+            # ── Duplicate notice ──
             if duplicate_records > 0:
                 st.info(
-                    f"📌 Duplicate employee inventory records were detected and consolidated into "
+                    f"📌 **Duplicate employee inventory records were detected.** "
+                    f"The system consolidated **{total_inv_records:,}** total records into "
                     f"**{total_unique_emps:,}** unique employees to avoid overestimating procurement requirements."
                 )
 
-            with st.expander("**How was this calculated?**"):
-                st.markdown("**Formula Used:**")
+        # ═══════════════════════════════════════════════════════
+        # SECTION 2: COMPLETE COMPUTATION
+        # ═══════════════════════════════════════════════════════
+        st.markdown('---')
+        st.subheader('💰 Complete Budget Computation')
+
+        comp_cols = st.columns([1, 1])
+        with comp_cols[0]:
+            st.markdown('**📊 Total Unique Employees**')
+            st.markdown(f'**{total_unique_emps:,}**')
+
+            st.markdown('**📊 Duplicate Records Removed**')
+            st.markdown(f'**{duplicate_records:,}**')
+
+            st.markdown('**📊 Employees Already Assigned Desktop**')
+            st.markdown(f'**{int(emps_with_desktop):,}**')
+
+            st.markdown('**📊 Employees Already Assigned Laptop**')
+            st.markdown(f'**{int(emps_with_laptop):,}**')
+
+            st.markdown('**📊 Employees Already Assigned Computer**')
+            st.markdown(f'**{emps_with_computer:,}**')
+
+            st.markdown('**📊 Employees Without Computer**')
+            st.markdown(f'**{emps_without_computer:,}**')
+
+        with comp_cols[1]:
+            for item in selected_items:
+                info = summary.get(item, {'units': 0, 'unit_cost': 0, 'total': 0})
+                if info['units'] > 0:
+                    st.markdown(f'**📊 Recommended {item}**')
+                    st.markdown(f'**{info["units"]:,}** units')
+
+            st.markdown('**📊 Estimated Budget Breakdown**')
+            for item in selected_items:
+                info = summary.get(item, {'units': 0, 'unit_cost': 0, 'total': 0})
+                if info['units'] > 0:
+                    st.markdown(
+                        f'• **{item}**: {info["units"]:,} × ₱{info["unit_cost"]:,} = '
+                        f'₱{info["total"]:,}'
+                    )
+            st.markdown(f'**Grand Total: ₱{total_budget:,}**')
+
+        # ═══════════════════════════════════════════════════════
+        # SECTION 3: OFFICE NEEDS SUMMARY
+        # ═══════════════════════════════════════════════════════
+        st.markdown('---')
+        st.subheader('🏢 Office Needs Summary')
+        if offices_df is not None and not offices_df.empty:
+            display_cols = ['Office', 'Total Employees', 'Employees with Computer',
+                            'Employees without Computer', 'Estimated Budget']
+            # Add per-item rec columns
+            for item in selected_items:
+                col = f'rec_{item}'
+                if col in offices_df.columns:
+                    display_cols.append(col)
+            display_cols.append('Priority')
+            available = [c for c in display_cols if c in offices_df.columns]
+            st.dataframe(offices_df[available], use_container_width=True)
+        else:
+            st.info('No office data available.')
+
+        # ═══════════════════════════════════════════════════════
+        # SECTION 4: PROCUREMENT PRIORITY RANKING
+        # ═══════════════════════════════════════════════════════
+        st.markdown('---')
+        st.subheader('📊 Procurement Priority Ranking')
+        if offices_df is not None and not offices_df.empty:
+            rank_df = offices_df[['Rank', 'Office', 'Employees without Computer',
+                                  'Estimated Budget', 'Priority']].copy()
+            rank_df.columns = ['Rank', 'Office', 'Need', 'Budget', 'Priority']
+
+            def color_priority(val):
+                colors = {'HIGH': 'background-color: #1b5e20; color: white',
+                          'MEDIUM': 'background-color: #f9a825',
+                          'LOW': 'background-color: #e0e0e0'}
+                return colors.get(val, '')
+
+            st.dataframe(
+                rank_df.style.map(color_priority, subset=['Priority']),
+                use_container_width=True
+            )
+        else:
+            st.info('No priority data available.')
+
+        # ═══════════════════════════════════════════════════════
+        # SECTION 5: PROCUREMENT RECOMMENDATION LIST
+        # ═══════════════════════════════════════════════════════
+        st.markdown('---')
+        st.subheader('📋 Procurement Recommendation List')
+        if procurement_list is not None and not procurement_list.empty:
+            st.dataframe(procurement_list, use_container_width=True, height=400)
+
+            # Count by reason
+            st.markdown('**Reason Summary**')
+            reason_counts = procurement_list['Reason'].value_counts().reset_index()
+            reason_counts.columns = ['Reason', 'Employee Count']
+            st.dataframe(reason_counts, use_container_width=True)
+        else:
+            st.info('All employees already have the selected equipment. No procurement needed.')
+
+        # ═══════════════════════════════════════════════════════
+        # SECTION 6: BUDGET BREAKDOWN & HOW WAS THIS CALCULATED?
+        # ═══════════════════════════════════════════════════════
+        st.markdown('---')
+        st.subheader('📈 Budget Breakdown')
+
+        if len(selected_items) > 0:
+            # Bar chart
+            items_chart = [item for item in selected_items if summary.get(item, {}).get('units', 0) > 0]
+            if items_chart:
+                fig, ax = plt.subplots(figsize=(10, 5))
+                categories = items_chart
+                values = [summary[item]['total'] for item in items_chart]
+                colors = plt.cm.Set2(range(len(categories)))
+                bars = ax.bar(categories, values, color=colors, edgecolor='white', width=0.5)
+                ax.set_title('Estimated Budget Breakdown by Equipment Type', fontweight='bold')
+                ax.set_ylabel('Budget (₱)')
+                ax.tick_params(axis='x', rotation=30)
+                for bar, val in zip(bars, values):
+                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(values) * 0.01,
+                            f'₱{val:,}', ha='center', fontweight='bold', fontsize=9)
+                st.pyplot(fig)
+
+        # ── Computation steps ──
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown('**📐 Mathematical Computation**')
+            for item in selected_items:
+                info = summary.get(item, {'units': 0, 'unit_cost': 0, 'total': 0})
+                if info['units'] > 0:
+                    st.markdown(f"""
+**{item}**
+```
+{info['units']:,} × ₱{info['unit_cost']:,}
+= ₱{info['total']:,}
+```
+""")
+            st.markdown(f"""
+**Grand Total**
+```
+{' + '.join([f'₱{summary[item]["total"]:,}' for item in selected_items if summary.get(item, {}).get("units", 0) > 0])}
+= ₱{total_budget:,}
+```
+""")
+
+        with col_b:
+            with st.expander('**❓ How was this calculated?**', expanded=True):
+                st.markdown('**Formula Used**')
                 st.markdown("""
 ```
 Unique Employees
@@ -778,57 +1140,45 @@ Recommended Purchase × Unit Cost
 Estimated Budget
 ```
 """)
-                st.markdown("**Actual Computation:**")
-                st.markdown(f"""
-```
-{desktop_rec:,} Desktop × ₱{DESKTOP_COST:,}
-= ₱{desktop_budget_val:,}
+                st.markdown('**AI Confidence**')
+                st.markdown('✅ **High**')
+                st.caption(
+                    'The recommendation is based on unique employee records, existing ICT inventory '
+                    'assignments, and standardized procurement costs.'
+                )
 
-{laptop_rec:,} Laptop × ₱{LAPTOP_COST:,}
-= ₱{laptop_budget_val:,}
-
-Grand Total
-
-₱{desktop_budget_val:,}
-+
-₱{laptop_budget_val:,}
------------------
-₱{total_budget_val:,}
-```
-""")
-
-            confidence = st.columns([1, 4])
-            with confidence[0]:
-                st.markdown("**Confidence:**")
-            with confidence[1]:
-                st.markdown("✅ **High**")
-            st.caption(
-                "The recommendation is based on unique employee records, existing ICT inventory "
-                "assignments, and standardized procurement costs."
-            )
-
+        # ═══════════════════════════════════════════════════════
+        # SECTION 7: AI BUDGET ANALYSIS (Ollama)
+        # ═══════════════════════════════════════════════════════
         st.markdown('---')
         st.subheader('🤖 AI Budget Analysis')
         if ollama_models:
             if st.button('📊 Generate AI Budget Analysis', type='primary', use_container_width=True):
-                budget_total = int(total_row['estimated_budget'].values[0])
-                desktop_units = int(items[items['category']=='Desktop Computer']['recommended_purchase'].values[0])
-                laptop_units = int(items[items['category']=='Laptop Computer']['recommended_purchase'].values[0])
-                emp_no_pc = len(emp_df) if emp_df is not None else 0
+                # Build context for the AI
+                context_lines = [
+                    f"BUDGET DATA:",
+                    f"- Total Estimated Budget: ₱{total_budget:,}",
+                ]
+                for item in selected_items:
+                    info = summary.get(item, {'units': 0, 'unit_cost': 0})
+                    if info['units'] > 0:
+                        context_lines.append(
+                            f"- {item}: {info['units']} units @ ₱{info['unit_cost']:,}"
+                            f" = ₱{info['units'] * info['unit_cost']:,}"
+                        )
+                context_lines.append(f"")
+                context_lines.append(f"ADDITIONAL CONTEXT:")
+                context_lines.append(f"- Unique Employees Without Computer: {emps_without_computer}")
+                context_lines.append(f"- Total Unique Employees: {total_unique_emps}")
+                context_lines.append(f"- Offices Analyzed: {len(offices_df) if offices_df is not None else 0}")
 
                 prompt = f"""You are a Senior ICT Procurement and Budget Analyst. Analyze the following procurement budget data and provide strategic insights.
 
-BUDGET DATA:
-- Total Estimated Budget: ₱{budget_total:,}
-- Desktop Computers: {desktop_units} units @ ₱{DESKTOP_COST:,} = ₱{desktop_units * DESKTOP_COST:,}
-- Laptop Computers: {laptop_units} units @ ₱{LAPTOP_COST:,} = ₱{laptop_units * LAPTOP_COST:,}
-
-ADDITIONAL CONTEXT:
-- Unique Employees Without Computer: {emp_no_pc}
+{' '.join(context_lines)}
 
 Provide a structured analysis covering:
 1. **Budget Adequacy** - Is the budget sufficient to address all needs?
-2. **Spending Breakdown** - Is the Desktop/Laptop split appropriate?
+2. **Spending Breakdown** - Is the equipment split appropriate?
 3. **Gap Analysis** - What is still needed beyond this budget?
 4. **Risk Assessment** - What are the risks of under-funding?
 5. **Phasing Recommendation** - How to prioritize spending across phases
@@ -858,8 +1208,6 @@ Provide a structured analysis covering:
                     st.markdown(full_response)
         else:
             st.info('💡 Start Ollama to unlock AI-powered budget analysis with your preferred model.')
-    else:
-        st.warning('Procurement recommendation not found.')
 
 elif page == '📈 Visualizations':
     st.title('📈 System Visualizations')
