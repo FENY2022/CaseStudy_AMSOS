@@ -1,0 +1,15 @@
+Division,Count,assigned_computers,shortage,replacement_count,recommended_procurement
+PMD,24,54,0,120,120
+SMD,72,76,0,106,106
+CDD,87,78,9,95,104
+Administration Division,69,0,69,0,69
+ED,26,34,0,62,62
+Finance,26,40,0,62,62
+LPDD,31,43,0,61,61
+RSCIG,20,16,4,31,35
+ORED,20,9,11,12,23
+LEGAL,13,16,0,21,21
+ARDMS,6,9,0,18,18
+ENGP,26,15,11,3,14
+ARDTS,9,7,2,9,11
+COA,0,4,0,0,0
