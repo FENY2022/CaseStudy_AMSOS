@@ -166,7 +166,7 @@ def compute_division_shortage(inv_df, div_df):
     return result
 
 
-# === PROCUREMENT REDESIGN: Equipment costs and analysis functions ===
+# === PROCUREMENT POLICY-BASED ANALYSIS FUNCTIONS ===
 
 # Standard unit costs for all procurement items
 EQUIPMENT_COSTS = {
@@ -187,25 +187,43 @@ ALL_PROCUREMENT_ITEMS = [
     'Monitor', 'UPS', 'Projector', 'Router', 'Switch', 'CCTV'
 ]
 
+# Shared equipment policies per office
+# (item_name, max_allowed, inventory_variants_for_counting)
+SHARED_POLICIES = [
+    ('Printer', 3, ['Printer']),
+    ('CCTV', 4, ['CCTV / IP CAMERA', 'CCTV']),
+    ('Projector', 1, ['LCD PROJECTORS', 'Projector']),
+    ('Switch', 1, ['Network Switches', 'Switch']),
+    ('Router', 1, ['Routers', 'Router']),
+]
+
+
+def normalize_office(name):
+    """Normalise office division names to avoid duplicates."""
+    if pd.isna(name):
+        return name
+    name = str(name).strip()
+    if name.lower() == 'legal':
+        return 'LEGAL'
+    return name
+
 
 def build_employee_equipment_map(inv_df):
     """
-    Build a mapping of unique employees to their owned equipment.
-    Step 1: Remove duplicate employee names so each employee is counted once.
-    Step 2: Collect the set of equipment each employee owns.
+    Step 1: Remove duplicate employee names – each employee counts once.
+    Step 2: Collect the set of equipment each unique employee owns.
     """
-    # Deduplicate by employeeName – each employee is one person
     unique_emps = inv_df[[
         'employeeName', 'officeDivision', 'sex', 'statusOfEmployment', 'natureOfWork'
     ]].drop_duplicates(subset='employeeName').reset_index(drop=True)
+    # Normalise office names
+    unique_emps['officeDivision'] = unique_emps['officeDivision'].apply(normalize_office)
 
-    # Group equipment types owned by each unique employee
     emp_equip = inv_df.groupby('employeeName')['equipmentType'].apply(
         lambda x: set(x.dropna())
     ).reset_index()
     emp_equip.columns = ['employeeName', 'equipment_set']
 
-    # Merge back; employees with no inventory records get an empty set
     result = unique_emps.merge(emp_equip, on='employeeName', how='left')
     result['equipment_set'] = result['equipment_set'].apply(
         lambda s: s if isinstance(s, set) else set()
@@ -213,157 +231,267 @@ def build_employee_equipment_map(inv_df):
     return result
 
 
-def get_missing_items(equipment_set, selected_items):
-    """Return list of selected items the employee does NOT own."""
-    owned = equipment_set
-    missing = []
-    for item in selected_items:
-        # Normalise: treat 'Laptop Computers' (inventory) as 'Laptop Computer' (preference)
-        item_variants = [item]
-        if item == 'Laptop Computer':
-            item_variants.append('Laptop Computers')
-        if item == 'Desktop Computer':
-            item_variants.append('Desktop Computer')
-        has_item = any(v in owned for v in item_variants)
-        if not has_item:
-            missing.append(item)
-    return missing
-
-
-def generate_reason(employee_name, equipment_set, missing_items):
-    """Generate an XAI reason explaining why procurement is recommended."""
-    owned_desktop = any(v in equipment_set for v in ['Desktop Computer'])
-    owned_laptop = any(v in equipment_set for v in ['Laptop Computer', 'Laptop Computers'])
-    owned_printer = 'Printer' in equipment_set
-    owned_scanner = 'Scanner' in equipment_set
-    owned_monitor = 'Monitor' in equipment_set
-    owned_cctv = 'CCTV / IP CAMERA' in equipment_set or 'CCTV' in equipment_set
-
-    if not owned_desktop and not owned_laptop:
-        return "Employee has no assigned Desktop or Laptop computer."
-    if not owned_desktop and owned_laptop:
-        return "Employee has a Laptop but no Desktop computer."
-    if owned_desktop and not owned_laptop:
-        return "Employee has a Desktop but no Laptop computer."
-
-    # For non-computer items
-    missing_names = [m for m in missing_items if m not in ['Desktop Computer', 'Laptop Computer']]
-    if missing_names:
-        return f"Employee lacks the following equipment: {', '.join(missing_names)}."
-
-    return "Employee requires additional ICT equipment."
-
-
-def analyze_office_procurement(emp_map, selected_items):
+def compute_office_equipment_counts(inv_df):
     """
-    Group employees by officeDivision and compute procurement statistics.
-    Returns DataFrame ranked by highest need.
+    Count total records per officeDivision for each equipment type.
+    Used for shared-resource policy decisions (printers, CCTV, etc.).
     """
-    records = []
+    df = inv_df.copy()
+    df['officeDivision'] = df['officeDivision'].apply(normalize_office)
+
+    offices = df['officeDivision'].unique()
+    result = {}
+    for office in offices:
+        odf = df[df['officeDivision'] == office]
+        counts = {}
+        for item, _, variants in SHARED_POLICIES:
+            pat = '|'.join(variants)
+            counts[item] = int(odf[odf['equipmentType'].str.contains(pat, case=False, na=False)].shape[0])
+        # Also count Desktop and Laptop per office (unique employees)
+        unique_in_office = df[df['officeDivision'] == office]['employeeName'].unique()
+        counts['Desktop Computer'] = int(df[(df['officeDivision'] == office) &
+            (df['equipmentType'].str.contains('Desktop Computer', case=False, na=False))
+            ]['employeeName'].nunique())
+        counts['Laptop Computer'] = int(df[(df['officeDivision'] == office) &
+            (df['equipmentType'].str.contains('Laptop', case=False, na=False))
+            ]['employeeName'].nunique())
+        # UPS count (total records, shared per office)
+        counts['UPS'] = int(odf[odf['equipmentType'].str.contains('UPS', case=False, na=False)].shape[0])
+        result[office] = counts
+    return result
+
+
+def compute_employee_computer_procurement(emp_map, selected_items):
+    """
+    Policy: Desktop/Laptop only for employees with NO Desktop AND NO Laptop.
+    If both selected: Technical work → Desktop, others → Laptop.
+    """
+    want_desktop = 'Desktop Computer' in selected_items
+    want_laptop = 'Laptop Computer' in selected_items
+
+    # Employees with neither Desktop nor Laptop
+    no_computer = emp_map[emp_map['equipment_set'].apply(
+        lambda s: not any(v in s for v in ['Desktop Computer', 'Laptop Computer', 'Laptop Computers'])
+    )].copy()
+
+    results = []
+    for _, row in no_computer.iterrows():
+        nature = str(row.get('natureOfWork', '')).lower()
+        # If both selected, split by work nature
+        if want_desktop and (not want_laptop or 'technical' in nature):
+            results.append({
+                'employeeName': row['employeeName'],
+                'office': row['officeDivision'],
+                'item': 'Desktop Computer',
+                'cost': EQUIPMENT_COSTS['Desktop Computer'],
+                'reason': 'Employee has no assigned Desktop or Laptop computer.',
+            })
+        elif want_laptop:
+            results.append({
+                'employeeName': row['employeeName'],
+                'office': row['officeDivision'],
+                'item': 'Laptop Computer',
+                'cost': EQUIPMENT_COSTS['Laptop Computer'],
+                'reason': 'Employee has no assigned Desktop or Laptop computer.',
+            })
+    return pd.DataFrame(results)
+
+
+def compute_shared_procurement(office_counts, selected_items):
+    """
+    Apply shared-resource procurement policies per office.
+    """
+    rows = []
+    for item, max_allowed, variants in SHARED_POLICIES:
+        if item not in selected_items:
+            continue
+        for office, counts in office_counts.items():
+            current = counts.get(item, 0)
+            recommend = int(max(0, max_allowed - current))
+            if recommend > 0:
+                # Build policy explanation
+                if item == 'Printer':
+                    explanation = (
+                        f"The procurement policy allows a maximum of {max_allowed} shared printers per division. "
+                        f"Since {office} currently has {current} printer(s), "
+                        f"the AI recommends procuring {recommend} additional printer(s)."
+                    )
+                elif item == 'CCTV':
+                    explanation = (
+                        f"The procurement policy recommends at least {max_allowed} CCTV units per office for security coverage. "
+                        f"Since {office} currently has {current} CCTV unit(s), "
+                        f"the AI recommends procuring {recommend} additional unit(s)."
+                    )
+                else:
+                    explanation = (
+                        f"The procurement policy allows a maximum of {max_allowed} {item}(s) per division. "
+                        f"Since {office} currently has {current}, "
+                        f"the AI recommends procuring {recommend} unit(s)."
+                    )
+                rows.append({
+                    'office': office,
+                    'item': item,
+                    'units': recommend,
+                    'cost_per_unit': EQUIPMENT_COSTS.get(item, 0),
+                    'reason': explanation,
+                })
+    return pd.DataFrame(rows)
+
+
+def compute_ups_procurement(emp_map, desktop_recs, selected_items):
+    """
+    UPS: recommend for every employee getting a Desktop who does not already own UPS.
+    """
+    if 'UPS' not in selected_items or desktop_recs.empty:
+        return pd.DataFrame()
+    results = []
+    for _, rec in desktop_recs.iterrows():
+        emp_data = emp_map[emp_map['employeeName'] == rec['employeeName']]
+        if not emp_data.empty and 'UPS' not in emp_data.iloc[0]['equipment_set']:
+            results.append({
+                'employeeName': rec['employeeName'],
+                'office': rec['office'],
+                'item': 'UPS',
+                'cost': EQUIPMENT_COSTS['UPS'],
+                'reason': f"Employee {rec['employeeName']} is recommended a Desktop Computer but currently has no UPS.",
+            })
+    return pd.DataFrame(results)
+
+
+def policy_full_analysis(emp_map, office_counts, selected_items):
+    """
+    Run all policy-based computations and return:
+      emp_recs_df   – per-employee Desktop/Laptop recommendations
+      shared_df     – per-office shared-resource recommendations
+      ups_df        – per-employee UPS recommendations
+      offices_df    – per-office summary
+      proc_list_df  – combined procurement list
+      summary       – per-item totals
+      total_units, total_budget
+    """
+    # 1) Per-employee Desktop / Laptop
+    emp_recs = compute_employee_computer_procurement(emp_map, selected_items)
+
+    # 2) Shared resources per office
+    shared_df = compute_shared_procurement(office_counts, selected_items)
+
+    # 3) UPS for Desktop recipients
+    desktop_recs = emp_recs[emp_recs['item'] == 'Desktop Computer'] if not emp_recs.empty else pd.DataFrame()
+    ups_df = compute_ups_procurement(emp_map, desktop_recs, selected_items)
+
+    # 4) Office summary
+    office_records = []
     for office, group in emp_map.groupby('officeDivision'):
-        total = len(group)
-        with_desktop = group['equipment_set'].apply(
-            lambda s: any(v in s for v in ['Desktop Computer'])
-        ).sum()
-        with_laptop = group['equipment_set'].apply(
-            lambda s: any(v in s for v in ['Laptop Computer', 'Laptop Computers'])
-        ).sum()
-        with_computer = group['equipment_set'].apply(
-            lambda s: any(v in s for v in ['Desktop Computer', 'Laptop Computer', 'Laptop Computers'])
-        ).sum()
-        without_computer = total - with_computer
+        total_emps = len(group)
+        w_desk = int(group['equipment_set'].apply(lambda s: 'Desktop Computer' in s).sum())
+        w_lap = int(group['equipment_set'].apply(
+            lambda s: any(v in s for v in ['Laptop Computer', 'Laptop Computers'])).sum())
+        w_comp = int(group['equipment_set'].apply(
+            lambda s: any(v in s for v in ['Desktop Computer', 'Laptop Computer', 'Laptop Computers'])).sum())
+        wo_comp = total_emps - w_comp
 
-        # Count employees missing each selected item
-        rec_counts = {}
+        rec_items = {}
         for item in selected_items:
-            count = group['equipment_set'].apply(
-                lambda s, i=item: len(get_missing_items(s, [i])) > 0
-            ).sum()
-            rec_counts[f'rec_{item}'] = count
+            if item in ('Desktop Computer', 'Laptop Computer'):
+                cnt = int(emp_recs[(emp_recs['item'] == item) & (emp_recs['office'] == office)].shape[0]) if not emp_recs.empty else 0
+            elif item == 'UPS':
+                cnt = int(ups_df[ups_df['office'] == office].shape[0]) if not ups_df.empty else 0
+            else:
+                cnt = int(shared_df[(shared_df['item'] == item) & (shared_df['office'] == office)]['units'].sum()) if not shared_df.empty else 0
+            rec_items[f'rec_{item}'] = cnt
 
-        # Compute budget for this office
-        budget = 0
-        for item in selected_items:
-            cnt = rec_counts.get(f'rec_{item}', 0)
-            cost = EQUIPMENT_COSTS.get(item, 0)
-            budget += cnt * cost
+        budget = sum(rec_items.get(f'rec_{item}', 0) * EQUIPMENT_COSTS.get(item, 0) for item in selected_items)
 
-        records.append({
+        # Existing printer / CCTV counts for display
+        o_counts = office_counts.get(office, {})
+        existing_printers = o_counts.get('Printer', 0)
+        existing_cctv = o_counts.get('CCTV', 0)
+
+        office_records.append({
             'Office': office,
-            'Total Employees': total,
-            'Employees with Desktop': int(with_desktop),
-            'Employees with Laptop': int(with_laptop),
-            'Employees with Computer': int(with_computer),
-            'Employees without Computer': int(without_computer),
-            **{k: int(v) for k, v in rec_counts.items()},
-            'Estimated Budget': int(budget),
+            'Total Employees': total_emps,
+            'Employees with Desktop': w_desk,
+            'Employees with Laptop': w_lap,
+            'Employees with Computer': w_comp,
+            'Employees without Computer': wo_comp,
+            'Existing Printers': existing_printers,
+            'Existing CCTV': existing_cctv,
+            **rec_items,
+            'Estimated Budget': budget,
         })
 
-    offices_df = pd.DataFrame(records)
+    offices_df = pd.DataFrame(office_records)
     if not offices_df.empty:
-        offices_df = offices_df.sort_values(
-            'Employees without Computer', ascending=False
-        ).reset_index(drop=True)
+        offices_df = offices_df.sort_values('Employees without Computer', ascending=False).reset_index(drop=True)
         offices_df['Rank'] = range(1, len(offices_df) + 1)
-
-        # Assign priority label
         max_need = offices_df['Employees without Computer'].max()
         if max_need > 0:
-            def priority_label(row):
-                need = row['Employees without Computer']
-                if need >= max_need * 0.5:
-                    return 'HIGH'
-                elif need >= max_need * 0.2:
-                    return 'MEDIUM'
-                else:
-                    return 'LOW'
-            offices_df['Priority'] = offices_df.apply(priority_label, axis=1)
+            offices_df['Priority'] = offices_df['Employees without Computer'].apply(
+                lambda n: 'HIGH' if n >= max_need * 0.5 else ('MEDIUM' if n >= max_need * 0.2 else 'LOW')
+            )
         else:
             offices_df['Priority'] = 'LOW'
-    return offices_df
 
-
-def generate_procurement_list(emp_map, selected_items):
-    """
-    Generate a per-employee procurement recommendation list with reasons.
-    """
-    records = []
-    for _, row in emp_map.iterrows():
-        missing = get_missing_items(row['equipment_set'], selected_items)
-        if not missing:
-            continue
-        # Compute total cost
-        total_cost = sum(EQUIPMENT_COSTS.get(item, 0) for item in missing)
-        reason = generate_reason(row['employeeName'], row['equipment_set'], missing)
-        records.append({
-            'Employee': row['employeeName'],
-            'Office': row['officeDivision'],
-            'Current Equipment': ', '.join(sorted(row['equipment_set'])) if row['equipment_set'] else 'None',
-            'Missing Equipment': ', '.join(missing),
-            'Recommended Procurement': ', '.join(missing),
-            'Estimated Cost': int(total_cost),
-            'Reason': reason,
+    # 5) Procurement list (combine employee + shared)
+    proc_rows = []
+    # Employee-level items
+    for _, r in emp_recs.iterrows():
+        proc_rows.append({
+            'Employee': r['employeeName'],
+            'Office': r['office'],
+            'Item': r['item'],
+            'Type': 'Per-Employee',
+            'Quantity': 1,
+            'Unit Cost': r['cost'],
+            'Total Cost': r['cost'],
+            'Reason': r['reason'],
         })
-    rec_df = pd.DataFrame(records)
-    if not rec_df.empty:
-        rec_df = rec_df.sort_values('Estimated Cost', ascending=False).reset_index(drop=True)
-    return rec_df
+    for _, r in ups_df.iterrows():
+        proc_rows.append({
+            'Employee': r['employeeName'],
+            'Office': r['office'],
+            'Item': r['item'],
+            'Type': 'Per-Employee',
+            'Quantity': 1,
+            'Unit Cost': r['cost'],
+            'Total Cost': r['cost'],
+            'Reason': r['reason'],
+        })
+    # Shared items (office-level)
+    for _, r in shared_df.iterrows():
+        total = r['units'] * r['cost_per_unit']
+        proc_rows.append({
+            'Employee': f'{r["office"]} (Office)',
+            'Office': r['office'],
+            'Item': r['item'],
+            'Type': 'Shared',
+            'Quantity': int(r['units']),
+            'Unit Cost': int(r['cost_per_unit']),
+            'Total Cost': int(total),
+            'Reason': r['reason'],
+        })
 
+    proc_list = pd.DataFrame(proc_rows)
+    if not proc_list.empty:
+        proc_list = proc_list.sort_values('Total Cost', ascending=False).reset_index(drop=True)
 
-def compute_procurement_summary(procurement_list, selected_items):
-    """
-    Compute total procurement summary from the recommendation list.
-    """
+    # 6) Summary
     summary = {}
     for item in selected_items:
-        cnt = procurement_list['Missing Equipment'].str.contains(
-            item, regex=False
-        ).sum() if not procurement_list.empty else 0
+        units = 0
+        if not emp_recs.empty:
+            units += int(emp_recs[emp_recs['item'] == item].shape[0])
+        if item == 'UPS' and not ups_df.empty:
+            units += int(ups_df.shape[0])
+        if not shared_df.empty:
+            units += int(shared_df[shared_df['item'] == item]['units'].sum())
         cost = EQUIPMENT_COSTS.get(item, 0)
-        summary[item] = {'units': cnt, 'unit_cost': cost, 'total': cnt * cost}
+        summary[item] = {'units': units, 'unit_cost': cost, 'total': units * cost}
+
     total_units = sum(v['units'] for v in summary.values())
     total_budget = sum(v['total'] for v in summary.values())
-    return summary, total_units, total_budget
+
+    return emp_recs, shared_df, ups_df, offices_df, proc_list, summary, total_units, total_budget
 
 
 @st.cache_resource
