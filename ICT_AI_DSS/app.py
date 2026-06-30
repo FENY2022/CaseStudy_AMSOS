@@ -119,8 +119,8 @@ if page == '📊 Dashboard KPIs':
         with cols[0]:
             priority_counts = repl_df['predicted_priority'].value_counts()
             fig, ax = plt.subplots(figsize=(6, 4))
-            colors_p = {'Critical': '#e74c3c', 'High': '#f39c12', 'Medium': '#3498db', 'Low': '#2ecc71'}
-            bar_colors = [colors_p.get(p, '#95a5a6') for p in priority_counts.index]
+            colors_p = {'Critical': '#1b5e20', 'High': '#2e7d32', 'Medium': '#388e3c', 'Low': '#66bb6a'}
+            bar_colors = [colors_p.get(p, '#a8e6a3') for p in priority_counts.index]
             ax.bar(priority_counts.index, priority_counts.values, color=bar_colors, edgecolor='white')
             ax.set_title('Replacement Priority Distribution', fontweight='bold')
             ax.set_ylabel('Count')
@@ -136,7 +136,7 @@ if page == '📊 Dashboard KPIs':
                 labels = ['Replace', 'Poor', 'Aging', 'Good', 'Very Good', 'Excellent']
                 health_cats = pd.cut(health, bins=bins, labels=labels, right=False).value_counts()
             fig2, ax2 = plt.subplots(figsize=(6, 4))
-            colors_h = ['#e74c3c', '#e67e22', '#f39c12', '#3498db', '#27ae60', '#2ecc71']
+            colors_h = ['#1b5e20', '#2e7d32', '#388e3c', '#43a047', '#66bb6a', '#81c784']
             ax2.bar(health_cats.index, health_cats.values, color=colors_h[:len(health_cats)], edgecolor='white')
             ax2.set_title('Asset Health Distribution', fontweight='bold')
             ax2.set_ylabel('Count')
@@ -443,8 +443,8 @@ elif page == '🖥️ Replacement Priority':
         filtered = filtered.head(top_n)
 
         def color_priority(val):
-            colors = {'Critical': 'background-color: #ffcccc', 'High': 'background-color: #ffe0b2',
-                      'Medium': 'background-color: #bbdefb', 'Low': 'background-color: #c8e6c9'}
+            colors = {'Critical': 'background-color: #a5d6a7', 'High': 'background-color: #c8e6c9',
+                      'Medium': 'background-color: #e8f5e9', 'Low': 'background-color: #f1f8e9'}
             return colors.get(val, '')
 
         display_cols = [c for c in ['rank', 'propertyNumber', 'equipmentType', 'brand', 'equipment_age',
@@ -471,13 +471,13 @@ elif page == '👥 Employee Priority':
             fig, ax = plt.subplots(figsize=(8, 5))
             status_counts = emp_df['status_of_employment'].value_counts()
             ax.pie(status_counts.values, labels=status_counts.index, autopct='%1.1f%%',
-                   startangle=90, colors=plt.cm.Set2(np.linspace(0, 1, len(status_counts))))
+                   startangle=90, colors=plt.cm.Greens(np.linspace(0.3, 0.9, len(status_counts))))
             ax.set_title('Employment Status Distribution', fontweight='bold')
             st.pyplot(fig)
         with col2:
             fig, ax = plt.subplots(figsize=(8, 5))
             nature_counts = emp_df['nature_of_work'].value_counts().head(8)
-            ax.barh(nature_counts.index, nature_counts.values, color='#e74c3c', edgecolor='white')
+            ax.barh(nature_counts.index, nature_counts.values, color='#2d5a27', edgecolor='white')
             ax.set_title('Work Nature of Employees w/o PC', fontweight='bold')
             ax.set_xlabel('Count')
             st.pyplot(fig)
@@ -497,7 +497,7 @@ elif page == '🏢 Division Shortage':
 
         fig, ax = plt.subplots(figsize=(12, 6))
         top = div_short.sort_values('shortage', ascending=True).tail(10)
-        ax.barh(top['Division'], top['shortage'], color='#e67e22', edgecolor='white')
+        ax.barh(top['Division'], top['shortage'], color='#3a7d3e', edgecolor='white')
         ax.set_title('Division Computer Shortage', fontweight='bold')
         ax.set_xlabel('Shortage')
         for i, v in enumerate(top['shortage']):
@@ -522,7 +522,7 @@ elif page == '💰 Procurement Budget':
         with col2:
             fig, ax = plt.subplots(figsize=(8, 5))
             bars = ax.bar(items['category'], items['estimated_budget'],
-                          color=['#3498db', '#2ecc71'], edgecolor='white', width=0.5)
+                          color=['#2d5a27', '#6abf69'], edgecolor='white', width=0.5)
             ax.set_title('Estimated Budget Breakdown', fontweight='bold')
             ax.set_ylabel('Budget (₱)')
             for bar, val in zip(bars, items['estimated_budget']):
