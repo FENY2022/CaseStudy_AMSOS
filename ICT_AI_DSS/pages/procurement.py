@@ -3,15 +3,17 @@
 import streamlit as st
 import pandas as pd
 from backend import (
-    CURRENT_YEAR, EQUIPMENT_COSTS, ALL_PROCUREMENT_ITEMS,
+    CURRENT_YEAR, EQUIPMENT_COSTS, ALL_PROCUREMENT_ITEMS, MAX_PRINTER_TARGET,
     build_employee_equipment_map, compute_office_equipment_counts,
     policy_full_analysis, compute_priority_scores, optimize_budget,
-    compute_enhanced_priority_scores, generate_ai_summary_text,
+    classify_employee_priority_tiers, get_item_employee_list,
+    compute_item_office_priority, compute_printer_office_priority,
+    generate_per_item_ai_explanation,
 )
 from ui_components import render_section_header, render_kpi_card, render_export_buttons, to_csv, to_excel
 
 
-def render(inv, ollama_models):
+def render(inv, repl_df, ollama_models):
     render_section_header('💰 Procurement')
 
     # ── Step indicator ──
@@ -146,17 +148,107 @@ def render(inv, ollama_models):
         st.markdown('</div>', unsafe_allow_html=True)
 
         # ════════════════════════════════════════════
-        # AI SUMMARY
+        # PER-ITEM AI ANALYSIS SECTIONS
         # ════════════════════════════════════════════
-        summary_text = generate_ai_summary_text(
-            total_unique_emps, num_offices, emps_without_computer,
-            offices_needing, available_budget, desktop_count,
-            laptop_count, printer_count, total_budget
-        )
-        st.markdown(f'<div class="ai-summary-box">{summary_text}</div>', unsafe_allow_html=True)
+        priority_tiers_df = classify_employee_priority_tiers(emp_map, repl_df)
+
+        for item in selected_items:
+            if item == 'Desktop Computer':
+                st.markdown('### 💻 Desktop Computer Procurement')
+                w_desk = int(emp_map['equipment_set'].apply(lambda s: 'Desktop Computer' in s).sum())
+                w_lap = int(emp_map['equipment_set'].apply(lambda s: any(v in s for v in ['Laptop Computer', 'Laptop Computers'])).sum())
+                wo_comp = total_unique_emps - (w_desk + w_lap)
+                rec_count = summary.get('Desktop Computer', {}).get('units', 0)
+                rec_budget = summary.get('Desktop Computer', {}).get('total', 0)
+
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric('Total Employees', f'{total_unique_emps:,}')
+                c2.metric('Already Assigned Desktop', f'{w_desk:,}')
+                c3.metric('Already Assigned Laptop', f'{w_lap:,}')
+                c4.metric('Without Desktop or Laptop', f'{wo_comp:,}')
+
+                st.markdown(f'<div style="display:flex; gap:2rem; margin:0.5rem 0 1rem 0; padding:0.75rem 1rem; background:#FFF; border:1px solid #E5E7EB; border-radius:8px;"><span><strong>Recommended Desktop Purchases:</strong> {rec_count}</span><span><strong>Estimated Budget:</strong> ₱{rec_budget:,}</span></div>', unsafe_allow_html=True)
+
+                office_df = compute_item_office_priority(emp_map, 'Desktop Computer', selected_items)
+                if not office_df.empty:
+                    st.markdown('**Office Priority Ranking**')
+                    disp = office_df[['Rank', 'Office', 'Employees Needing Desktop', 'Budget', 'Priority']].copy()
+                    disp['Budget'] = disp['Budget'].apply(lambda x: f'₱{int(x):,}')
+                    def _hl_off1(row):
+                        if row['Priority'] == 'HIGH':
+                            return ['background:#FEF2F2;color:#DC2626;font-weight:600']*len(row)
+                        elif row['Priority'] == 'MEDIUM':
+                            return ['background:#FFFBEB;color:#D97706']*len(row)
+                        return ['']*len(row)
+                    st.dataframe(disp.style.apply(_hl_off1, axis=1), use_container_width=True, height=200, hide_index=True)
+
+                emp_list = get_item_employee_list(emp_recs, 'Desktop Computer', priority_tiers_df)
+                if not emp_list.empty:
+                    st.markdown('**Employee Priority List**')
+                    disp_emp = emp_list[['office_rank', 'employeeName', 'office', 'current_equipment', 'priority_label', 'item', 'cost']].copy()
+                    disp_emp.columns = ['Rank', 'Employee', 'Office', 'Current Equipment', 'Reason', 'Recommended Item', 'Cost']
+                    disp_emp['Cost'] = disp_emp['Cost'].apply(lambda x: f'₱{int(x):,}')
+                    st.dataframe(disp_emp, use_container_width=True, height=300, hide_index=True)
+
+                expl = generate_per_item_ai_explanation('Desktop Computer', emp_map, office_counts, desktop_count=rec_count)
+                st.markdown(f'<div class="ai-summary-box">{expl}</div>', unsafe_allow_html=True)
+                st.markdown('<hr style="margin:1.5rem 0;">', unsafe_allow_html=True)
+
+            elif item == 'Laptop Computer':
+                st.markdown('### 💼 Laptop Procurement')
+                w_desk = int(emp_map['equipment_set'].apply(lambda s: 'Desktop Computer' in s).sum())
+                w_lap = int(emp_map['equipment_set'].apply(lambda s: any(v in s for v in ['Laptop Computer', 'Laptop Computers'])).sum())
+                wo_comp = total_unique_emps - (w_desk + w_lap)
+                rec_count = summary.get('Laptop Computer', {}).get('units', 0)
+                rec_budget = summary.get('Laptop Computer', {}).get('total', 0)
+
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric('Total Employees', f'{total_unique_emps:,}')
+                c2.metric('Already Assigned Desktop', f'{w_desk:,}')
+                c3.metric('Already Assigned Laptop', f'{w_lap:,}')
+                c4.metric('Without Desktop or Laptop', f'{wo_comp:,}')
+
+                st.markdown(f'<div style="display:flex; gap:2rem; margin:0.5rem 0 1rem 0; padding:0.75rem 1rem; background:#FFF; border:1px solid #E5E7EB; border-radius:8px;"><span><strong>Recommended Laptop Purchases:</strong> {rec_count}</span><span><strong>Estimated Budget:</strong> ₱{rec_budget:,}</span></div>', unsafe_allow_html=True)
+
+                office_df = compute_item_office_priority(emp_map, 'Laptop Computer', selected_items)
+                if not office_df.empty:
+                    st.markdown('**Office Priority Ranking**')
+                    disp = office_df[['Rank', 'Office', 'Employees Needing Laptop', 'Budget', 'Priority']].copy()
+                    disp['Budget'] = disp['Budget'].apply(lambda x: f'₱{int(x):,}')
+                    def _hl_off2(row):
+                        if row['Priority'] == 'HIGH':
+                            return ['background:#FEF2F2;color:#DC2626;font-weight:600']*len(row)
+                        elif row['Priority'] == 'MEDIUM':
+                            return ['background:#FFFBEB;color:#D97706']*len(row)
+                        return ['']*len(row)
+                    st.dataframe(disp.style.apply(_hl_off2, axis=1), use_container_width=True, height=200, hide_index=True)
+
+                emp_list = get_item_employee_list(emp_recs, 'Laptop Computer', priority_tiers_df)
+                if not emp_list.empty:
+                    st.markdown('**Employee Priority List**')
+                    disp_emp = emp_list[['office_rank', 'employeeName', 'office', 'current_equipment', 'priority_label', 'item', 'cost']].copy()
+                    disp_emp.columns = ['Rank', 'Employee', 'Office', 'Current Equipment', 'Reason', 'Recommended Item', 'Cost']
+                    disp_emp['Cost'] = disp_emp['Cost'].apply(lambda x: f'₱{int(x):,}')
+                    st.dataframe(disp_emp, use_container_width=True, height=300, hide_index=True)
+
+                expl = generate_per_item_ai_explanation('Laptop Computer', emp_map, office_counts, laptop_count=rec_count)
+                st.markdown(f'<div class="ai-summary-box">{expl}</div>', unsafe_allow_html=True)
+                st.markdown('<hr style="margin:1.5rem 0;">', unsafe_allow_html=True)
+
+            elif item == 'Printer':
+                st.markdown('### 🖨 Printer Procurement')
+                printer_office_df = compute_printer_office_priority(emp_map, office_counts)
+                if not printer_office_df.empty:
+                    disp = printer_office_df[['Rank', 'Office', 'Employees', 'Existing Printers', 'Target Printers', 'Additional Printers Needed', 'Estimated Cost', 'Reason']].copy()
+                    disp['Estimated Cost'] = disp['Estimated Cost'].apply(lambda x: f'₱{int(x):,}')
+                    st.dataframe(disp, use_container_width=True, height=350, hide_index=True)
+
+                expl = generate_per_item_ai_explanation('Printer', emp_map, office_counts)
+                st.markdown(f'<div class="ai-summary-box">{expl}</div>', unsafe_allow_html=True)
+                st.markdown('<hr style="margin:1.5rem 0;">', unsafe_allow_html=True)
 
         # ════════════════════════════════════════════
-        # OFFICE PRIORITY TABLE
+        # OFFICE PRIORITY TABLE (Overview)
         # ════════════════════════════════════════════
         if offices_df is not None and not offices_df.empty:
             render_section_header('🏢 Office Priority')

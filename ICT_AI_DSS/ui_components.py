@@ -5,6 +5,7 @@ UI Components — CSS, cards, tables, header, sidebar, exports.
 import streamlit as st
 import pandas as pd
 import base64
+import importlib.util
 from io import BytesIO
 
 
@@ -521,6 +522,9 @@ def to_csv(df):
 
 
 def to_excel(df):
+    if importlib.util.find_spec('openpyxl') is None:
+        st.error('Excel export needs the openpyxl package. Run: pip install openpyxl')
+        return b''
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Sheet1')

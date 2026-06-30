@@ -5,26 +5,31 @@ import pandas as pd
 from ui_components import render_section_header, render_table, to_csv, to_excel
 
 
+def _sorted_text_options(series):
+    values = series.dropna().astype(str).str.strip()
+    return sorted(values[values != ''].unique(), key=str.casefold)
+
+
 def render(inv):
     render_section_header('📦 ICT Inventory')
 
     col_filters = st.columns(4)
     with col_filters[0]:
-        equip_filter = st.multiselect('Equipment Type', options=sorted(inv['equipmentType'].unique()), default=[], key='inv_equip')
+        equip_filter = st.multiselect('Equipment Type', options=_sorted_text_options(inv['equipmentType']), default=[], key='inv_equip')
     with col_filters[1]:
-        office_filter = st.multiselect('Office/Division', options=sorted(inv['officeDivision'].unique()), default=[], key='inv_office')
+        office_filter = st.multiselect('Office/Division', options=_sorted_text_options(inv['officeDivision']), default=[], key='inv_office')
     with col_filters[2]:
-        status_filter = st.multiselect('Employment Status', options=sorted(inv['statusOfEmployment'].dropna().unique()), default=[], key='inv_status')
+        status_filter = st.multiselect('Employment Status', options=_sorted_text_options(inv['statusOfEmployment']), default=[], key='inv_status')
     with col_filters[3]:
         search = st.text_input('🔍 Search', placeholder='Property #, name, or equipment...', key='inv_search')
 
     filtered = inv.copy()
     if equip_filter:
-        filtered = filtered[filtered['equipmentType'].isin(equip_filter)]
+        filtered = filtered[filtered['equipmentType'].astype(str).isin(equip_filter)]
     if office_filter:
-        filtered = filtered[filtered['officeDivision'].isin(office_filter)]
+        filtered = filtered[filtered['officeDivision'].astype(str).isin(office_filter)]
     if status_filter:
-        filtered = filtered[filtered['statusOfEmployment'].isin(status_filter)]
+        filtered = filtered[filtered['statusOfEmployment'].astype(str).isin(status_filter)]
     if search:
         mask = filtered.astype(str).apply(lambda x: x.str.contains(search, case=False, na=False)).any(axis=1)
         filtered = filtered[mask]
