@@ -749,7 +749,7 @@ elif page == '💰 Procurement Budget':
                 f"(**{num_desktop_emps:,}** with Desktop, **{num_laptop_emps:,}** with Laptop). "
                 f"After removing duplicate employee records and validating computer ownership, "
                 f"**{employees_no_pc:,}** employees {'was' if employees_no_pc == 1 else 'were'} identified "
-                f"{'without any assigned computer' if employees_no_pc == 1 else 'without any assigned computer'}. "
+                f"without any assigned computer. "
                 f"Based on the agency's standard procurement costs of ₱{DESKTOP_COST:,} per Desktop and "
                 f"₱{LAPTOP_COST:,} per Laptop, the estimated procurement budget is **₱{total_budget_val:,}**."
             )
