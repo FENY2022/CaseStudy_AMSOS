@@ -1275,523 +1275,233 @@ elif page == '💰 Procurement Budget':
     else:
         # ── Build employee equipment map (unique employees only) ──
         emp_map = build_employee_equipment_map(inv)
-
         total_unique_emps = len(emp_map)
         total_inv_records = len(inv)
         duplicate_records = total_inv_records - total_unique_emps
 
-        # ── Compute office equipment counts for shared-resource policies ──
+        # ── Compute office equipment counts ──
         office_counts = compute_office_equipment_counts(inv)
 
         # ── Compute all policy-based analysis ──
         emp_recs, shared_df, ups_df, offices_df, proc_list, summary, total_units, total_budget, printer_df = \
             policy_full_analysis(emp_map, office_counts, selected_items)
 
-        # ── Top-level metric ──
-        st.metric(
-            'Total Estimated Procurement Budget',
-            f'₱{total_budget:,}',
-            delta=f'{total_units} unit{"s" if total_units != 1 else ""}'
+        # Employee equipment counts
+        emps_with_desktop = emp_map['equipment_set'].apply(lambda s: 'Desktop Computer' in s).sum()
+        emps_with_laptop = emp_map['equipment_set'].apply(lambda s: any(v in s for v in ['Laptop Computer', 'Laptop Computers'])).sum()
+        emps_with_computer = emp_map['equipment_set'].apply(lambda s: any(v in s for v in ['Desktop Computer', 'Laptop Computer', 'Laptop Computers'])).sum()
+        emps_without_computer = total_unique_emps - emps_with_computer
+
+        # Budget input
+        available_budget = st.number_input(
+            'Available Budget (₱)',
+            min_value=0, max_value=100_000_000,
+            value=int(total_budget), step=10_000, format='%d',
+            key='avail_budget',
+            label_visibility='collapsed'
         )
 
         # ═══════════════════════════════════════════════════════
-        # SECTION 1: AI PROCUREMENT ANALYSIS
+        # SECTION 1 — PROCUREMENT SUMMARY
+        # ═══════════════════════════════════════════════════════
+        st.subheader('📊 Procurement Summary')
+
+        emps_to_procure = total_unique_emps - emps_with_computer
+        offices_needing = len(offices_df[offices_df['Employees without Computer'] > 0]) if offices_df is not None and not offices_df.empty else 0
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric('💰 Total Budget Required', f'₱{total_budget:,}')
+        c2.metric('💵 Available Budget', f'₱{available_budget:,}')
+        c3.metric('👥 Employees to be Procured', emps_to_procure)
+        c4.metric('🏢 Offices Requiring Procurement', offices_needing)
+
+        # ═══════════════════════════════════════════════════════
+        # SECTION 2 — AI DECISION SUMMARY
         # ═══════════════════════════════════════════════════════
         st.markdown('---')
-        st.subheader('🤖 AI Procurement Analysis')
+        st.subheader('🤖 AI Decision')
 
-        emps_with_desktop = emp_map['equipment_set'].apply(
-            lambda s: 'Desktop Computer' in s
-        ).sum()
-        emps_with_laptop = emp_map['equipment_set'].apply(
-            lambda s: any(v in s for v in ['Laptop Computer', 'Laptop Computers'])
-        ).sum()
-        emps_with_computer = emp_map['equipment_set'].apply(
-            lambda s: any(v in s for v in ['Desktop Computer', 'Laptop Computer', 'Laptop Computers'])
-        ).sum()
-        emps_without_computer = total_unique_emps - emps_with_computer
+        desktop_count = summary.get('Desktop Computer', {}).get('units', 0)
+        laptop_count = summary.get('Laptop Computer', {}).get('units', 0)
+        printer_count = summary.get('Printer', {}).get('units', 0)
+        num_offices = len(offices_df) if offices_df is not None else 0
+
+        summary_lines = [
+            f"The system analyzed **{total_unique_emps:,}** unique employees from **{num_offices}** offices.",
+            "",
+            f"**{emps_without_computer}** employees do not have a Desktop or Laptop.",
+            f"**{offices_needing}** offices require additional ICT resources.",
+            "",
+            f"Based on the available budget of **₱{available_budget:,}**, the system recommends purchasing:",
+        ]
+        if desktop_count > 0:
+            summary_lines.append(f"• **{desktop_count}** Desktop Computers")
+        if laptop_count > 0:
+            summary_lines.append(f"• **{laptop_count}** Laptop Computers")
+        if printer_count > 0:
+            summary_lines.append(f"• **{printer_count}** Printers")
+        summary_lines.append("")
+        summary_lines.append("Priority was given to employees without any computer.")
 
         with st.container(border=True):
-            cols = st.columns(4)
-            cols[0].metric('Total Unique Employees', f'{total_unique_emps:,}')
-            cols[1].metric('Duplicate Records Removed', f'{duplicate_records:,}')
-            cols[2].metric('Employees with Computer', f'{emps_with_computer:,}')
-            cols[3].metric('Employees without Computer', f'{emps_without_computer:,}')
-
-            cols2 = st.columns(3)
-            cols2[0].metric('Employees with Desktop', f'{int(emps_with_desktop):,}')
-            cols2[1].metric('Employees with Laptop', f'{int(emps_with_laptop):,}')
-            if proc_list is not None and not proc_list.empty:
-                cols2[2].metric('Procurement Line Items', f'{len(proc_list):,}')
-
-            st.markdown('**📝 Policy-Based Recommendation**')
-
-            reason_parts = [
-                f"The system analyzed **{total_unique_emps:,}** unique employees across all offices."
-            ]
-            if duplicate_records > 0:
-                reason_parts.append(
-                    "Duplicate employee inventory records were automatically consolidated before computation."
-                )
-            reason_parts.append("Procurement policies applied:")
-            reason_parts.append(
-                "• **Desktop/Laptop**: Allocated only to employees with neither Desktop nor Laptop. "
-                "Technical staff receive Desktop; Administrative staff receive Laptop."
-            )
-            if 'Printer' in selected_items:
-                reason_parts.append(
-                    "• **Printer**: Proportional allocation — the division with the most employees "
-                    "is capped at 7 printers. All other divisions get a proportional target "
-                    "based on their employee count relative to the largest division. "
-                    "Existing printers are subtracted from the target."
-                )
-            if 'CCTV' in selected_items:
-                reason_parts.append(
-                    "• **CCTV**: Shared resource — target 4 units per office. "
-                    "Recommendation = 4 minus current count (capped at 0)."
-                )
-            if 'Projector' in selected_items:
-                reason_parts.append(
-                    "• **Projector**: Max 1 per division. Recommendation = 1 if currently 0."
-                )
-            if 'Switch' in selected_items:
-                reason_parts.append(
-                    "• **Switch**: Max 1 per division. Recommendation = 1 if currently 0."
-                )
-            if 'Router' in selected_items:
-                reason_parts.append(
-                    "• **Router**: Max 1 per division. Recommendation = 1 if currently 0."
-                )
-            if 'UPS' in selected_items:
-                reason_parts.append(
-                    "• **UPS**: Recommended only for employees who receive a Desktop recommendation "
-                    "and do not currently own UPS."
-                )
-
-            if selected_items:
-                reason_parts.append("Based on these policies, the AI recommends purchasing:")
-                for item in selected_items:
-                    cnt = summary.get(item, {}).get('units', 0)
-                    reason_parts.append(f"• **{item}**: {cnt:,}")
-
-            reason_text = '\n\n'.join(reason_parts)
-            st.markdown(reason_text)
-
-            if duplicate_records > 0:
-                st.info(
-                    f"📌 **Duplicate employee inventory records were detected.** "
-                    f"The system consolidated **{total_inv_records:,}** total records into "
-                    f"**{total_unique_emps:,}** unique employees to avoid overestimating procurement requirements."
-                )
+            st.markdown('\n'.join(summary_lines))
 
         # ═══════════════════════════════════════════════════════
-        # SECTION 2: PER-EMPLOYEE COMPUTER PROCUREMENT
+        # SECTION 3 — OFFICE PRIORITY
         # ═══════════════════════════════════════════════════════
         st.markdown('---')
-        st.subheader('👤 Per-Employee Computer Procurement')
+        st.subheader('🏢 Office Priority')
 
-        if emp_recs is not None and not emp_recs.empty:
-            # Group by item for summary
-            emp_item_counts = emp_recs['item'].value_counts()
-            emp_item_cols = st.columns(max(len(emp_item_counts), 1))
-            for i, (item_name, cnt) in enumerate(emp_item_counts.items()):
-                emp_item_cols[i].metric(f'{item_name}', f'{cnt:,}')
-            if ups_df is not None and not ups_df.empty:
-                st.metric('UPS (with Desktop)', f'{len(ups_df):,}')
-
-            st.dataframe(
-                emp_recs[['employeeName', 'office', 'item', 'cost', 'reason']],
-                use_container_width=True, height=300
-            )
-
-            if ups_df is not None and not ups_df.empty:
-                st.markdown('**UPS Recommendations (for Desktop recipients)**')
-                st.dataframe(
-                    ups_df[['employeeName', 'office', 'item', 'cost', 'reason']],
-                    use_container_width=True, height=200
-                )
-        else:
-            st.info('All employees already have a Desktop or Laptop. No per-employee computer procurement needed.')
-
-        # ═══════════════════════════════════════════════════════
-        # SECTION 3: SHARED RESOURCE PROCUREMENT
-        # ═══════════════════════════════════════════════════════
-        st.markdown('---')
-        st.subheader('🏢 Shared Resource Procurement (Per Office)')
-
-        shared_items = {'Printer', 'CCTV', 'Projector', 'Switch', 'Router'}
-        active_shared = [s for s in selected_items if s in shared_items]
-        if active_shared:
-            has_any_data = False
-            for s_item in active_shared:
-                if s_item == 'Printer':
-                    s_total = int(printer_df['units'].sum()) if not printer_df.empty else 0
-                else:
-                    s_total = int(shared_df[shared_df['item'] == s_item]['units'].sum()) if not shared_df.empty else 0
-                if s_total > 0:
-                    has_any_data = True
-                    st.metric(f'{s_item} (total across offices)', f'{s_total:,}')
-
-            if has_any_data:
-                combined_shared = []
-                if not printer_df.empty:
-                    combined_shared.append(printer_df)
-                if not shared_df.empty:
-                    combined_shared.append(shared_df)
-                display_df = pd.concat(combined_shared, ignore_index=True) if combined_shared else pd.DataFrame()
-                if not display_df.empty:
-                    st.dataframe(
-                        display_df[['office', 'item', 'units', 'cost_per_unit', 'reason']],
-                        use_container_width=True, height=300
-                    )
-            else:
-                st.info(
-                    'No shared resource procurement needed. '
-                    'All offices already meet the policy limits for selected items.'
-                )
-        else:
-            st.info('No shared resources selected. Select Printer, CCTV, Projector, Switch, or Router to see policy-based recommendations.')
-
-        # ═══════════════════════════════════════════════════════
-        # SECTION 4: OFFICE NEEDS SUMMARY
-        # ═══════════════════════════════════════════════════════
-        st.markdown('---')
-        st.subheader('🏢 Office Needs Summary')
         if offices_df is not None and not offices_df.empty:
-            display_cols = ['Office', 'Total Employees', 'Employees with Computer',
-                            'Employees without Computer', 'Existing Printers', 'Existing CCTV']
-            for item in selected_items:
-                col = f'rec_{item}'
-                if col in offices_df.columns:
-                    display_cols.append(col)
-            display_cols.append('Estimated Budget')
-            display_cols.append('Priority')
-            available = [c for c in display_cols if c in offices_df.columns]
-            st.dataframe(offices_df[available], use_container_width=True)
+            rank_df = offices_df[['Rank', 'Office', 'Employees without Computer', 'Estimated Budget', 'Priority']].copy()
+            rank_df.columns = ['Rank', 'Office', 'Employees Needing Equipment', 'Budget', 'Priority']
+
+            def color_priority(val):
+                if val == 'HIGH':
+                    return 'background-color: #ffcccc; color: #cc0000'
+                elif val == 'MEDIUM':
+                    return 'background-color: #fff3cd; color: #856404'
+                return ''
+
+            st.dataframe(rank_df.style.map(color_priority, subset=['Priority']), use_container_width=True, height=300)
         else:
             st.info('No office data available.')
 
         # ═══════════════════════════════════════════════════════
-        # SECTION 5: PROCUREMENT PRIORITY RANKING
+        # SECTION 4 — EMPLOYEES TO PROCURE
         # ═══════════════════════════════════════════════════════
         st.markdown('---')
-        st.subheader('📊 Procurement Priority Ranking')
-        if offices_df is not None and not offices_df.empty:
-            rank_df = offices_df[['Rank', 'Office', 'Employees without Computer',
-                                  'Estimated Budget', 'Priority']].copy()
-            rank_df.columns = ['Rank', 'Office', 'Need', 'Budget', 'Priority']
+        st.subheader('👤 Employees to Procure')
 
-            def color_priority(val):
-                colors = {'HIGH': 'background-color: #1b5e20; color: white',
-                          'MEDIUM': 'background-color: #f9a825',
-                          'LOW': 'background-color: #e0e0e0'}
-                return colors.get(val, '')
+        if emp_recs is not None and not emp_recs.empty:
+            priority_df = compute_priority_scores(emp_map)
+            merged = priority_df.merge(emp_recs[['employeeName', 'office', 'item', 'cost', 'reason']], on=['employeeName', 'office'], how='inner')
 
-            st.dataframe(
-                rank_df.style.map(color_priority, subset=['Priority']),
-                use_container_width=True
-            )
+            display = merged[['employeeName', 'office', 'equipment_set', 'item', 'cost', 'priority_reason', 'priority_score']].copy()
+            display.columns = ['Employee Name', 'Office', 'Current Equipment', 'Recommended Item', 'Cost', 'Reason', 'Priority']
+            display['Current Equipment'] = display['Current Equipment'].apply(lambda s: ', '.join(sorted(s)) if isinstance(s, set) and s else 'None')
+            display['Cost'] = display['Cost'].apply(lambda x: f'₱{int(x):,}')
+            display = display.sort_values('Priority', ascending=False).reset_index(drop=True)
+
+            def highlight_priority(row):
+                score = row['Priority']
+                if score >= 80:
+                    return ['background-color: #ffcccc'] * len(row)
+                elif score >= 50:
+                    return ['background-color: #fff3cd'] * len(row)
+                return [''] * len(row)
+
+            st.dataframe(display.style.apply(highlight_priority, axis=1), use_container_width=True, height=400)
         else:
-            st.info('No priority data available.')
+            st.info('All employees already have a Desktop or Laptop.')
 
         # ═══════════════════════════════════════════════════════
-        # SECTION 6: FULL PROCUREMENT LIST
-        # ═══════════════════════════════════════════════════════
-        st.markdown('---')
-        st.subheader('📋 Procurement Recommendation List')
-        if proc_list is not None and not proc_list.empty:
-            st.dataframe(proc_list, use_container_width=True, height=400)
-
-            st.markdown('**Reason Summary**')
-            reason_counts = proc_list['Reason'].value_counts().reset_index()
-            reason_counts.columns = ['Reason', 'Count']
-            st.dataframe(reason_counts, use_container_width=True)
-        else:
-            st.info('All employees already have the selected equipment. No procurement needed.')
-
-        # ═══════════════════════════════════════════════════════
-        # SECTION 7: BUDGET BREAKDOWN & HOW WAS THIS CALCULATED?
+        # SECTION 5 — BUDGET BREAKDOWN
         # ═══════════════════════════════════════════════════════
         st.markdown('---')
         st.subheader('📈 Budget Breakdown')
 
-        if len(selected_items) > 0:
-            items_chart = [item for item in selected_items if summary.get(item, {}).get('units', 0) > 0]
-            if items_chart:
-                fig, ax = plt.subplots(figsize=(10, 5))
-                categories = items_chart
-                values = [summary[item]['total'] for item in items_chart]
-                colors = plt.cm.Set2(range(len(categories)))
-                bars = ax.bar(categories, values, color=colors, edgecolor='white', width=0.5)
-                ax.set_title('Estimated Budget Breakdown by Equipment Type', fontweight='bold')
-                ax.set_ylabel('Budget (₱)')
-                ax.tick_params(axis='x', rotation=30)
+        items_with_units = [(item, summary[item]) for item in selected_items if summary.get(item, {}).get('units', 0) > 0]
+
+        if items_with_units:
+            bc1, bc2 = st.columns([1, 1])
+            with bc1:
+                for item, info in items_with_units:
+                    st.markdown(f"**{item}**")
+                    st.markdown(f"```\n{info['units']:,} × ₱{info['unit_cost']:,} = ₱{info['total']:,}\n```")
+                st.markdown("**Grand Total**")
+                st.markdown(f"```\n= ₱{total_budget:,}\n```")
+
+            with bc2:
+                fig, ax = plt.subplots(figsize=(8, 4))
+                labels = [item for item, _ in items_with_units]
+                values = [info['total'] for _, info in items_with_units]
+                colors = ['#2d5a27', '#388e3c', '#43a047', '#66bb6a', '#81c784', '#a5d6a7']
+                bars = ax.barh(labels, values, color=colors[:len(labels)])
+                ax.set_xlabel('Budget (₱)')
                 for bar, val in zip(bars, values):
-                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(values) * 0.01,
-                            f'₱{val:,}', ha='center', fontweight='bold', fontsize=9)
+                    ax.text(bar.get_width() + max(values) * 0.01, bar.get_y() + bar.get_height() / 2, f'₱{val:,}', va='center', fontweight='bold', fontsize=9)
                 st.pyplot(fig)
 
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.markdown('**📐 Mathematical Computation**')
-            for item in selected_items:
-                info = summary.get(item, {'units': 0, 'unit_cost': 0, 'total': 0})
-                if info['units'] > 0:
-                    st.markdown(f"""
-**{item}**
-```
-{info['units']:,} × ₱{info['unit_cost']:,}
-= ₱{info['total']:,}
-```
+        # ═══════════════════════════════════════════════════════
+        # SECTION 6 — HOW THE AI DECIDED
+        # ═══════════════════════════════════════════════════════
+        st.markdown('---')
+        with st.expander('❓ How did the AI compute this recommendation?'):
+            c6a, c6b = st.columns([1, 1])
+            with c6a:
+                st.markdown("**Decision Flow**")
+                st.markdown(f"""```
+Total Employees: {total_inv_records:,}
+       ↓
+Unique Employees: {total_unique_emps:,}
+       ↓
+Employees with Desktop/Laptop: {emps_with_computer:,}
+       ↓
+Employees Without Computer: {emps_without_computer:,}
+       ↓
+Office Priority
+       ↓
+Budget Allocation
+       ↓
+Final Procurement Recommendation
+```""")
+            with c6b:
+                st.markdown("**Formulas Used**")
+                st.markdown(f"""
+- **Unique Employees** = {total_inv_records:,} − {duplicate_records:,} = {total_unique_emps:,}
+- **Employees Without PC** = {total_unique_emps:,} − {emps_with_computer:,} = {emps_without_computer:,}
+- **Budget** = Σ(Units × Unit Cost)
 """)
+                for item, info in items_with_units:
+                    st.markdown(f"- **{item} Cost**: {info['units']} × ₱{info['unit_cost']:,} = ₱{info['total']:,}")
+
+        # ═══════════════════════════════════════════════════════
+        # SECTION 7 — PROCUREMENT POLICY
+        # ═══════════════════════════════════════════════════════
+        with st.expander('📋 Procurement Policy'):
+            st.markdown("""
+| Equipment | Allocation Rule |
+|-----------|----------------|
+| **Desktop** | 1 per employee |
+| **Laptop** | 1 per employee |
+| **Printer** | Shared resource — proportional to employee count |
+| **CCTV** | Shared — max 4 per office |
+| **Projector** | Shared — max 1 per division |
+| **Switch** | Shared — max 1 per division |
+| **Router** | Shared — max 1 per division |
+| **UPS** | 1 per Desktop recipient who lacks one |
+""")
+            st.markdown("*Maximum allocation depends on division size.*")
+
+        # ═══════════════════════════════════════════════════════
+        # SECTION 8 — DETAILED COMPUTATION
+        # ═══════════════════════════════════════════════════════
+        with st.expander('🔬 Detailed Computation (Advanced)'):
+            st.markdown("### Mathematical Computation")
             st.markdown(f"""
-**Grand Total**
-```
-{' + '.join([f'₱{summary[item]["total"]:,}' for item in selected_items if summary.get(item, {}).get("units", 0) > 0])}
-= ₱{total_budget:,}
-```
+**Duplicate Records Removed:**
+- Total inventory records: {total_inv_records:,}
+- Unique employees (by name): {total_unique_emps:,}
+- Duplicates removed: {duplicate_records:,}
+
+**Office Calculations:**
 """)
+            if offices_df is not None and not offices_df.empty:
+                st.dataframe(offices_df, use_container_width=True, height=200)
 
-        with col_b:
-            with st.expander('**❓ How was this calculated?**', expanded=True):
-                st.markdown('**Procurement Policy Rules**')
-                st.markdown("""
-The system applies the following procurement policies:
+            st.markdown("**Printer Calculations:**")
+            if printer_df is not None and not printer_df.empty:
+                st.markdown("- Proportional allocation based on employee count")
+                st.markdown("- Largest division receives max target of 7 printers")
+                st.dataframe(printer_df[['office', 'units', 'cost_per_unit']], use_container_width=True)
 
-**Per-Employee (Desktop / Laptop)**
-Only employees with **no Desktop AND no Laptop** receive a recommendation.
-- Technical staff → **Desktop Computer**
-- Administrative staff → **Laptop Computer**
+            st.markdown("**Budget Formulas:**")
+            for item, info in items_with_units:
+                st.markdown(f"- {item}: {info['units']:,} × ₱{info['unit_cost']:,} = ₱{info['total']:,}")
+            st.markdown(f"- **Grand Total: ₱{total_budget:,}**")
 
-**Shared Resources (Per Office)**
-- **Printer**: Proportional allocation — largest division gets target of **7**, others scaled by employee count (recommend target − existing)
-- **CCTV**: Target **4** per office (recommend 4 − current)
-- **Projector**: Max **1** per division
-- **Switch**: Max **1** per division
-- **Router**: Max **1** per division
-
-**UPS**
-- Recommended only for employees receiving a **Desktop** who do not already own a UPS.
-""")
-                st.markdown('**AI Confidence**')
-                st.markdown('✅ **High**')
-                st.caption(
-                    'Recommendations are based on unique employee records, existing ICT inventory '
-                    'assignments, standardized procurement costs, and defined organizational policies.'
-                )
-
-        # ═══════════════════════════════════════════════════════
-        # SECTION 8: BUDGET ALLOCATION & PRIORITY OPTIMIZATION
-        # ═══════════════════════════════════════════════════════
-        st.markdown('---')
-        st.subheader('💰 Budget Allocation & Priority Optimization')
-
-        # ── User-Defined Budget ──
-        with st.container(border=True):
-            st.markdown('**Available Budget**')
-            budget_cols = st.columns([2, 3])
-            with budget_cols[0]:
-                available_budget = st.number_input(
-                    'Enter available budget (₱)',
-                    min_value=0,
-                    max_value=100_000_000,
-                    value=int(total_budget),
-                    step=10_000,
-                    format='%d',
-                    key='avail_budget'
-                )
-                st.caption(f'Current: ₱{available_budget:,}')
-            with budget_cols[1]:
-                st.markdown(
-                    'The AI will automatically prioritize employees based on need '
-                    'and allocate the budget starting from the highest-priority candidate. '
-                    'Employees with the greatest ICT need are funded first.'
-                )
-
-        # ── Compute priority scores and optimize budget ──
-        priority_df = compute_priority_scores(emp_map)
-        opt_result, remaining_budget, total_requirement = optimize_budget(
-            priority_df, emp_recs, ups_df, available_budget
-        )
-
-        # ── Summary metrics ──
-        employees_funded = len(opt_result[opt_result['Status'] == 'APPROVED']) if not opt_result.empty else 0
-        employees_waiting = len(opt_result[opt_result['Status'] == 'WAITING FOR NEXT BUDGET']) if not opt_result.empty else 0
-        budget_coverage_pct = round((available_budget / total_requirement * 100) if total_requirement > 0 else 0, 1)
-
-        summ = st.columns(5)
-        summ[0].metric('Available Budget', f'₱{available_budget:,}')
-        summ[1].metric('Total Requirement', f'₱{total_requirement:,}')
-        summ[2].metric('Budget Coverage', f'{budget_coverage_pct}%')
-        summ[3].metric('Employees Funded', f'{employees_funded:,}')
-        summ[4].metric('Employees Waiting', f'{employees_waiting:,}')
-        st.metric('Remaining Budget', f'₱{remaining_budget:,}')
-
-        # ── Priority Optimization Table ──
-        st.markdown('---')
-        st.subheader('📊 AI Priority Optimization')
-
-        if not opt_result.empty:
-            def status_color(val):
-                if val == 'APPROVED':
-                    return 'background-color: #d4edda; font-weight: bold'
-                elif val == 'WAITING FOR NEXT BUDGET':
-                    return 'background-color: #fff3cd; font-weight: bold'
-                return ''
-
-            st.dataframe(
-                opt_result.style.map(status_color, subset=['Status']),
-                use_container_width=True, height=450
-            )
-
-            if employees_funded > 0:
-                st.success(
-                    f'✅ **{employees_funded}** employee(s) funded within the ₱{available_budget:,} budget. '
-                    f'Remaining: ₱{remaining_budget:,}'
-                )
-            if employees_waiting > 0:
-                st.warning(
-                    f'⏳ **{employees_waiting}** employee(s) are on the waiting list. '
-                    f'An additional ₱{max(0, total_requirement - available_budget):,} is needed to cover all.'
-                )
-        else:
-            st.info('No procurement recommendations to optimize. All employees already have computers.')
-
-        # ── WHY These Employees? ──
-        st.markdown('---')
-        st.subheader('🧠 Why These Employees?')
-
-        if not opt_result.empty:
-            approved = opt_result[opt_result['Status'] == 'APPROVED']
-            if not approved.empty:
-                for idx, (_, row) in enumerate(approved.iterrows()):
-                    emp_name = row['Employee Name']
-                    office = row['Office']
-                    current = row['Current Equipment']
-                    device = row['Recommended Device']
-                    cost = row['Estimated Cost']
-                    reason = row['Reason']
-                    score = row['Priority Score']
-
-                    coverage_info = priority_df[
-                        (priority_df['employeeName'] == emp_name) &
-                        (priority_df['office'] == office)
-                    ]
-                    coverage_pct = coverage_info.iloc[0]['office_coverage_pct'] if not coverage_info.empty else None
-
-                    if current == 'None' or not current or current == '':
-                        explanation = (
-                            f"**{emp_name}** was selected because they currently have "
-                            f"**no ICT equipment assigned**. Their priority score is "
-                            f"**{score}/100**."
-                        )
-                    else:
-                        explanation = (
-                            f"**{emp_name}** was prioritized because they currently have only "
-                            f"**{current}** assigned. {reason} Their priority score is "
-                            f"**{score}/100**."
-                        )
-
-                    if coverage_info is not None and not coverage_info.empty:
-                        cov = coverage_info.iloc[0]['office_coverage_pct']
-                        explanation += (
-                            f" Their office (**{office}**) has a computer coverage rate of "
-                            f"**{cov:.0%}**."
-                        )
-
-                    explanation += (
-                        f" The AI recommends one **{device}** valued at **₱{cost:,}**."
-                    )
-
-                    with st.container(border=True):
-                        cols = st.columns([1, 11])
-                        cols[0].markdown(f'**{idx + 1}.**')
-                        cols[1].markdown(explanation)
-            else:
-                st.info('No employees were approved within the current budget.')
-        else:
-            st.info('No procurement recommendations to evaluate.')
-
-        # ── Visualizations ──
-        st.markdown('---')
-        st.subheader('📈 Budget & Priority Visualizations')
-
-        if not opt_result.empty:
-            viz_cols = st.columns(2)
-
-            with viz_cols[0]:
-                # Budget Allocation Pie
-                fig1, ax1 = plt.subplots(figsize=(6, 4))
-                budget_labels = ['Budget Used', 'Remaining Budget']
-                budget_used = available_budget - remaining_budget
-                budget_values = [budget_used, remaining_budget]
-                colors_pie = ['#2d5a27', '#a5d6a7']
-                explode = (0.05, 0)
-                ax1.pie(
-                    budget_values, labels=budget_labels, autopct='%1.1f%%',
-                    startangle=90, colors=colors_pie, explode=explode,
-                    textprops={'fontweight': 'bold'}
-                )
-                ax1.set_title('Budget Allocation', fontweight='bold', fontsize=12)
-                st.pyplot(fig1)
-
-            with viz_cols[1]:
-                # Employees Covered / Waiting
-                fig2, ax2 = plt.subplots(figsize=(6, 4))
-                emp_labels = ['Funded', 'Waiting']
-                emp_values = [employees_funded, employees_waiting]
-                emp_colors = ['#2d5a27', '#f9a825']
-                bars = ax2.bar(emp_labels, emp_values, color=emp_colors, edgecolor='white', width=0.5)
-                ax2.set_title('Employees: Funded vs Waiting', fontweight='bold', fontsize=12)
-                ax2.set_ylabel('Count')
-                for bar, val in zip(bars, emp_values):
-                    ax2.text(
-                        bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
-                        str(val), ha='center', fontweight='bold', fontsize=11
-                    )
-                st.pyplot(fig2)
-
-            # Office Priority Ranking
-            st.markdown('---')
-            st.subheader('🏢 Office Priority Ranking')
-
-            if not opt_result.empty:
-                office_priority = opt_result.groupby('Office').agg(
-                    Total_Needed=('Employee Name', 'count'),
-                    Approved=('Status', lambda s: (s == 'APPROVED').sum()),
-                    Waiting=('Status', lambda s: (s == 'WAITING FOR NEXT BUDGET').sum()),
-                ).reset_index()
-                office_priority.columns = ['Office', 'Employees Needing', 'Approved', 'Waiting']
-                office_priority = office_priority.sort_values('Approved', ascending=False).reset_index(drop=True)
-
-                fig3, ax3 = plt.subplots(figsize=(10, max(4, len(office_priority) * 0.4)))
-                y_pos = range(len(office_priority))
-                ax3.barh(
-                    y_pos, office_priority['Approved'].values,
-                    color='#2d5a27', edgecolor='white', height=0.6, label='Approved'
-                )
-                ax3.barh(
-                    y_pos, -office_priority['Waiting'].values,
-                    color='#f9a825', edgecolor='white', height=0.6, label='Waiting'
-                )
-                ax3.set_yticks(y_pos)
-                ax3.set_yticklabels(office_priority['Office'].values)
-                ax3.set_xlabel('Employees')
-                ax3.set_title('Office Priority Ranking (Approved →, Waiting ←)', fontweight='bold')
-                ax3.axvline(0, color='black', linewidth=0.5)
-                ax3.legend(loc='lower right')
-                for i, (_, row) in enumerate(office_priority.iterrows()):
-                    if row['Approved'] > 0:
-                        ax3.text(row['Approved'] + 0.3, i, str(row['Approved']), va='center', fontweight='bold')
-                    if row['Waiting'] > 0:
-                        ax3.text(-row['Waiting'] - 0.3, i, str(row['Waiting']), va='center', fontweight='bold', ha='right')
-                st.pyplot(fig3)
-            else:
-                st.info('No office priority data available.')
-        else:
-            st.info('No data to visualize. Select procurement items to generate recommendations.')
-
-        # ── Ollama Deep Analysis (optional) ──
+        # ── Deep AI Budget Analysis (Ollama) ──
         if ollama_models:
             st.markdown('---')
             with st.expander('🤖 Deep AI Budget Analysis (Ollama)', expanded=False):
@@ -1800,11 +1510,19 @@ Only employees with **no Desktop AND no Laptop** receive a recommendation.
                     'using your selected Ollama model.'
                 )
                 if st.button('📊 Generate Deep AI Analysis', type='secondary', use_container_width=True):
+                    remaining = max(0, available_budget - total_budget)
+                    priority_df_opt = compute_priority_scores(emp_map)
+                    opt_result, _, total_requirement = optimize_budget(
+                        priority_df_opt, emp_recs, ups_df, available_budget
+                    )
+                    employees_funded = len(opt_result[opt_result['Status'] == 'APPROVED']) if not opt_result.empty else 0
+                    employees_waiting = len(opt_result[opt_result['Status'] == 'WAITING FOR NEXT BUDGET']) if not opt_result.empty else 0
+
                     context_lines = [
                         f"BUDGET DATA:",
                         f"- Available Budget: ₱{available_budget:,}",
                         f"- Total Requirement: ₱{total_requirement:,}",
-                        f"- Remaining Budget: ₱{remaining_budget:,}",
+                        f"- Remaining Budget: ₱{remaining:,}",
                         f"- Employees Funded: {employees_funded}",
                         f"- Employees Waiting: {employees_waiting}",
                     ]
@@ -1829,7 +1547,7 @@ Only employees with **no Desktop AND no Laptop** receive a recommendation.
                     context_lines.append("- 80 pts: Only peripheral devices")
                     context_lines.append("- 70 pts: Office below-average ICT coverage")
                     context_lines.append("")
-                    context_lines.append(f"- Employees Analyzed: {len(priority_df) if not priority_df.empty else 0}")
+                    context_lines.append(f"- Employees Analyzed: {len(priority_df_opt) if not priority_df_opt.empty else 0}")
                     context_lines.append(f"- Offices Analyzed: {len(offices_df) if offices_df is not None else 0}")
 
                     prompt = f"""You are a Senior ICT Procurement and Budget Analyst. Analyze the following optimized procurement budget data and provide strategic insights.
