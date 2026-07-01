@@ -79,7 +79,7 @@ with st.sidebar:
         <div class="sidebar-brand-icon">AI</div>
         <div>
             <div class="sidebar-brand-text">ICT-AMSOS</div>
-            <div class="sidebar-brand-sub">Asset Management &amp; Service Optimization</div>
+            <div class="sidebar-brand-sub">Decision Support</div>
         </div>
     </div>
     """, unsafe_allow_html=True)

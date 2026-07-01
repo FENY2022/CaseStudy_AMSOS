@@ -1,4 +1,4 @@
-# ICT-AMSOS: AI-Powered ICT Asset Management and Service Optimization System
+# AI-Based ICT Asset Replacement and Procurement Asset Management and Service Optimization System
 
 A dual-model Machine Learning system that predicts ICT asset replacement priority and health scores to support data-driven procurement and maintenance planning.
 
@@ -38,7 +38,7 @@ Feature Engineering
 ## Project Structure
 
 ```
-ICT_AMSOS/
+ICT_AI_DSS/
 ├── data/                          # Input CSV files
 │   ├── inv_inventory.csv          # ICT asset inventory
 │   ├── repairhistory.csv          # Equipment repair records
