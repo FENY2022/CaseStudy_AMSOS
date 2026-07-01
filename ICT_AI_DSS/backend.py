@@ -655,6 +655,346 @@ def compute_enhanced_priority_scores(emp_map, repl_df=None):
     return pd.DataFrame(results)
 
 
+# =====================================================================
+# EXPLAINABLE AI ASSET HEALTH ASSESSMENT
+# =====================================================================
+
+ISSUE_KEYWORDS = {
+    'Windows Update': r'(?i)(windows\s*update|windows\s+recovery|os\s+upgrade|operating\s+system)',
+    'RAM Upgrade': r'(?i)(ram\s*upgrade|memory\s*upgrade|added\s*ram|low\s*memory|insufficient\s*memory)',
+    'Hard Disk Replacement': r'(?i)(hard\s*disk|hdd|ssd\s*replace|storage\s*replace|blue\s*screen.*(?:ssd|hdd|disk)|replac(e|ed)\s+(?:ssd|hard\s*drive))',
+    'Motherboard Replacement': r'(?i)(motherboard|mobo|system\s*board)',
+    'Power Supply Replacement': r'(?i)(power\s*supply|psu|power\s*unit)',
+    'Monitor Replacement': r'(?i)(monitor|display|vga\s*cable|loose\s*connection.*monitor|no\s*display)',
+    'Network Issue': r'(?i)(network|ethernet|wifi|internet|connectivity|lan)',
+    'Software Installation': r'(?i)(install|microsoft\s*365|office\s*license|application)',
+    'Virus Infection': r'(?i)(virus|malware|infection|threat)',
+    'Printer Driver Installation': r'(?i)(printer.*driver|driver.*printer|printer.*install|print.*driver)',
+    'Cleaning': r'(?i)(cleaning|clean|dust|debris|preventive\s*maintenance|airflow)',
+    'Operating System Reinstallation': r'(?i)(reformat|reinstall.*os|os.*reinstall|fresh\s*install|reinstallation)',
+}
+
+REPAIR_STATUS_WEIGHTS = {
+    'Operational': 1.0,
+    'For Repair': -0.5,
+    'Not Operational': -1.0,
+    'Unserviceable': -1.0,
+    'PREVIOUSLY ISSUED': -0.3,
+    'Previously issued': -0.3,
+    'Computer Case only': -0.2,
+}
+
+RECURRING_ISSUE_THRESHOLD = 2
+
+
+def _parse_shelf_life(val):
+    if pd.isna(val):
+        return 'Unknown'
+    v = str(val).strip().lower()
+    if 'beyond' in v:
+        return 'Beyond'
+    return 'Within'
+
+
+def _compute_repair_score(repairs_count):
+    if repairs_count <= 1:
+        return 90, 'Excellent'
+    elif repairs_count <= 3:
+        return 75, 'Good'
+    elif repairs_count <= 5:
+        return 50, 'Fair'
+    else:
+        return 25, 'Critical'
+
+
+def _compute_remarks_score(remarks_statuses):
+    if not remarks_statuses:
+        return 50
+    scores = []
+    for s in remarks_statuses:
+        s_clean = str(s).strip()
+        if s_clean in REPAIR_STATUS_WEIGHTS:
+            scores.append(REPAIR_STATUS_WEIGHTS[s_clean])
+        else:
+            scores.append(0)
+    avg = sum(scores) / len(scores) if scores else 0
+    return max(0, min(100, 50 + avg * 50))
+
+
+def _compute_shelf_life_penalty(shelf_life):
+    parsed = _parse_shelf_life(shelf_life)
+    if parsed == 'Beyond':
+        return -10
+    return 0
+
+
+def _compute_age_penalty(year_acquired, equipment_type):
+    if pd.isna(year_acquired):
+        return 0
+    try:
+        year = int(float(year_acquired))
+    except (ValueError, TypeError):
+        return 0
+    CURRENT_YEAR = 2026
+    age = CURRENT_YEAR - year
+    desktop_laptop = str(equipment_type) if not pd.isna(equipment_type) else ''
+    if age >= 6:
+        return -15
+    elif age >= 4:
+        return -5
+    return 0
+
+
+def _identify_recurring_issues(remarks_list):
+    issues = []
+    issue_counts = {}
+    for r in remarks_list:
+        if pd.isna(r):
+            continue
+        r_str = str(r)
+        for issue, pattern in ISSUE_KEYWORDS.items():
+            import re
+            if re.search(pattern, r_str):
+                issue_counts[issue] = issue_counts.get(issue, 0) + 1
+    recurring = {k: v for k, v in issue_counts.items() if v >= RECURRING_ISSUE_THRESHOLD}
+    all_found = list(issue_counts.keys())
+    return all_found, recurring
+
+
+def _generate_ai_summary(remarks_filtered):
+    if not remarks_filtered:
+        return 'No repair history available for this asset.'
+    all_text = ' '.join([str(r) for r in remarks_filtered if not pd.isna(r)])
+    if not all_text.strip() or all_text.strip() in ('No remarks recorded', 'Completed', ''):
+        return 'No significant repair details recorded.'
+
+    issues_found, recurring = _identify_recurring_issues(remarks_filtered)
+    has_recurring = len(recurring) > 0
+
+    if 'RAM' in all_text and ('upgrad' in all_text.lower() or 'slow' in all_text.lower()):
+        return 'The device experienced slow performance due to insufficient memory. The Help Desk upgraded the RAM and performed preventive maintenance. The issue was successfully resolved.'
+    if 'blue screen' in all_text.lower() or 'ssd' in all_text.lower() and 'replace' in all_text.lower():
+        return 'The device encountered critical system errors due to a failing storage device. The Help Desk replaced the SSD and reinstalled the necessary applications. The system is now stable.'
+    if 'printer' in all_text.lower() and ('driver' in all_text.lower() or 'install' in all_text.lower()):
+        return 'The device required printer driver installation. The Help Desk configured the printer software and verified proper functionality.'
+    if 'windows' in all_text.lower() and ('update' in all_text.lower() or 'recovery' in all_text.lower()):
+        return 'The device required operating system updates. The Help Desk performed Windows Update and system recovery procedures to restore normal operation.'
+    if 'clean' in all_text.lower() or 'dust' in all_text.lower():
+        return 'Preventive maintenance was performed on the device. The Help Desk cleaned internal components to remove dust and improve airflow and cooling.'
+    if 'reset' in all_text.lower() or 'ink pad' in all_text.lower():
+        return 'The printer required maintenance. The Help Desk performed a reset of the printer ink pad counter and verified proper functionality.'
+    if 'ethernet' in all_text.lower() or 'wifi' in all_text.lower() or 'network' in all_text.lower() or 'dongle' in all_text.lower():
+        return 'The device experienced network connectivity issues. The Help Desk diagnosed the hardware problem and replaced the affected network component.'
+    if 'loose' in all_text.lower() or 'vga' in all_text.lower() or 'cable' in all_text.lower():
+        return 'The device had a loose cable connection causing intermittent display issues. The Help Desk secured all connections and verified proper operation.'
+    if 'beyond' in all_text.lower() and 'useful' in all_text.lower():
+        return 'The device has exceeded its useful life and is experiencing hardware failures due to aging components. The Help Desk recommends replacement to ensure reliable operation.'
+
+    parts = []
+    if issues_found:
+        parts.append(f"The Help Desk addressed the following issues: {', '.join(issues_found)}.")
+    if has_recurring:
+        recurring_str = ', '.join(recurring.keys())
+        parts.append(f"Recurring issues detected: {recurring_str}.")
+    if not parts:
+        return 'The Help Desk performed routine maintenance and repairs. The device is now operational.'
+    return ' '.join(parts)
+
+
+def _determine_risk_level(health_score, repairs_count, remarks_statuses, recurring_issues):
+    has_recurring = len(recurring_issues) > 0
+    has_remarks_negative = any(
+        str(s).strip() in ('For Repair', 'Not Operational', 'Unserviceable')
+        for s in remarks_statuses if not pd.isna(s)
+    )
+    all_remarks_critical = all(
+        str(s).strip() in ('Not Operational', 'Unserviceable')
+        for s in remarks_statuses if not pd.isna(s) and str(s).strip() != ''
+    ) if remarks_statuses else False
+
+    if all_remarks_critical:
+        return '🔴 Critical', 10
+    if repairs_count >= 6 or has_recurring or has_remarks_negative:
+        return '🔴 Critical', 20
+    if repairs_count == 5:
+        return '🟠 High Risk', 35
+    if repairs_count >= 3 and health_score < 60:
+        return '🟠 High Risk', 40
+    if repairs_count in (3, 4):
+        return '🟡 Moderate', 60
+    if repairs_count <= 2 and not has_remarks_negative:
+        return '🟢 Healthy', 85
+    return '🟢 Healthy', 80
+
+
+def _generate_recommendation(risk_level_label, equipment_type, issues_found, health_score):
+    if risk_level_label == '🔴 Critical':
+        if any('Hard Disk' in k or 'Motherboard' in k or 'Power Supply' in k for k in issues_found):
+            return 'Replace Storage Device'
+        return 'Prepare for Replacement'
+    if risk_level_label == '🟠 High Risk':
+        return 'Schedule Preventive Maintenance'
+    if risk_level_label == '🟡 Moderate':
+        return 'Continue Monitoring'
+    return 'Continue Monitoring'
+
+
+def _generate_explanation(record, equipment_type, actual_user):
+    prop_no = record.get('propertyNumber', 'Unknown')
+    repairs_count = record.get('repairs_count', 0)
+    health_score = record.get('health_score', 50)
+    risk_label = record.get('risk_label', '🟢 Healthy')
+    issues_found = record.get('issues_found', [])
+    remarks_status = record.get('current_status', 'Operational')
+    shelf_life = record.get('shelf_life', '')
+    year_acquired = record.get('year_acquired', '')
+
+    equip_name = equipment_type if not pd.isna(equipment_type) else 'equipment'
+    user = actual_user if not pd.isna(actual_user) else 'the assigned user'
+
+    explanation_parts = []
+
+    if repairs_count == 0:
+        explanation_parts.append(
+            f"This {equip_name} assigned to {user} has no repair history, indicating reliable performance."
+        )
+    else:
+        explanation_parts.append(
+            f"This {equip_name} assigned to {user} has been repaired {repairs_count} time(s)."
+        )
+
+    shelf_parsed = _parse_shelf_life(shelf_life)
+    if shelf_parsed == 'Beyond':
+        explanation_parts.append(
+            f"The asset is beyond its expected shelf life, increasing the likelihood of component degradation."
+        )
+
+    if issues_found:
+        issue_str = ', '.join(issues_found)
+        explanation_parts.append(
+            f"Repair records indicate issues including {issue_str}."
+        )
+
+    if repairs_count > 0:
+        if repairs_count >= 4:
+            explanation_parts.append(
+                f"The high frequency of repairs suggests the asset may be nearing end-of-life."
+            )
+        else:
+            explanation_parts.append(
+                f"The repair frequency is within acceptable limits."
+            )
+
+    explanation_parts.append(
+        f"The AI classifies this asset as {risk_label} with a health score of {health_score:.0f}/100."
+    )
+
+    return ' '.join(explanation_parts)
+
+
+def compute_asset_health_analysis(inv_df, repair_df):
+    results = []
+    inv_copy = inv_df.copy()
+
+    for _, asset in inv_copy.iterrows():
+        prop_no = asset.get('propertyNumber', asset.get('Property No', ''))
+        actual_user = asset.get('actualUser', asset.get('Actual User', ''))
+        equipment_type = asset.get('equipmentType', asset.get('Equipment Type', ''))
+        year_acquired = asset.get('yearAcquired', asset.get('Year Acquired', ''))
+        shelf_life = asset.get('shelfLife', asset.get('Shelf Life', ''))
+        employee = asset.get('employeeName', '')
+        office = asset.get('officeDivision', '')
+        remarks = asset.get('remarks', '')
+
+        asset_repairs = repair_df[
+            repair_df['Property No'].astype(str).str.strip() == str(prop_no).strip()
+        ].copy() if 'Property No' in repair_df.columns else pd.DataFrame()
+
+        if asset_repairs.empty:
+            asset_repairs = repair_df[
+                repair_df['Actual User'].astype(str).str.contains(
+                    str(actual_user).strip(), case=False, na=False
+                )
+            ].copy() if 'Actual User' in repair_df.columns else pd.DataFrame()
+
+        repairs_count = int(asset_repairs['Total Times Repaired'].iloc[0]) if not asset_repairs.empty and 'Total Times Repaired' in asset_repairs.columns else 0
+
+        remarks_list = asset_repairs['Remarks / Action Taken'].tolist() if not asset_repairs.empty and 'Remarks / Action Taken' in asset_repairs.columns else []
+        remarks_statuses = asset_repairs['Remarks'].tolist() if not asset_repairs.empty and 'Remarks' in asset_repairs.columns else []
+
+        current_status = str(remarks).strip() if not pd.isna(remarks) else 'Operational'
+        if remarks_statuses:
+            non_empty = [s for s in remarks_statuses if not pd.isna(s) and str(s).strip() not in ('', 'N/A')]
+            if non_empty:
+                current_status = str(non_empty[-1]).strip()
+
+        issues_found, recurring_issues = _identify_recurring_issues(remarks_list)
+
+        repair_score, repair_rating = _compute_repair_score(repairs_count)
+        remarks_score = _compute_remarks_score(remarks_statuses)
+        shelf_penalty = _compute_shelf_life_penalty(shelf_life)
+        age_penalty = _compute_age_penalty(year_acquired, equipment_type)
+
+        health_score = max(0, min(100,
+            repair_score * 0.40 +
+            remarks_score * 0.25 +
+            (100 + shelf_penalty) * 0.20 +
+            (100 + age_penalty) * 0.15
+        ))
+
+        risk_label, risk_score = _determine_risk_level(
+            health_score, repairs_count, remarks_statuses, recurring_issues
+        )
+
+        recommendation = _generate_recommendation(risk_label, equipment_type, issues_found, health_score)
+        ai_summary = _generate_ai_summary(remarks_list)
+
+        record = {
+            'propertyNumber': prop_no,
+            'repairs_count': repairs_count,
+            'health_score': round(health_score, 1),
+            'repair_rating': repair_rating,
+            'risk_label': risk_label,
+            'risk_score': risk_score,
+            'issues_found': issues_found,
+            'recurring_issues': recurring_issues,
+            'ai_summary': ai_summary,
+            'recommendation': recommendation,
+            'current_status': current_status,
+            'shelf_life': shelf_life,
+            'year_acquired': year_acquired,
+        }
+
+        record['explanation'] = _generate_explanation(
+            record, equipment_type, actual_user
+        )
+
+        record['employee'] = employee
+        record['office'] = office
+        record['equipment_type'] = equipment_type
+        record['actual_user'] = actual_user
+        record['remarks_history'] = remarks_list
+        record['date_recorded_list'] = asset_repairs['Date Recorded'].tolist() if not asset_repairs.empty and 'Date Recorded' in asset_repairs.columns else []
+        record['action_staff_list'] = asset_repairs['Action Staff'].tolist() if not asset_repairs.empty and 'Action Staff' in asset_repairs.columns else []
+
+        results.append(record)
+
+    df = pd.DataFrame(results)
+
+    healthy = len(df[df['risk_label'] == '🟢 Healthy'])
+    moderate = len(df[df['risk_label'] == '🟡 Moderate'])
+    high_risk = len(df[df['risk_label'] == '🟠 High Risk'])
+    critical = len(df[df['risk_label'] == '🔴 Critical'])
+
+    return df, {
+        'healthy': healthy,
+        'moderate': moderate,
+        'high_risk': high_risk,
+        'critical': critical,
+        'total': len(df),
+    }
+
+
 def generate_ai_summary_text(total_unique_emps, num_offices, emps_without_computer, offices_needing, available_budget, desktop_count, laptop_count, printer_count, total_budget):
     lines = [
         f"The AI analyzed **{total_unique_emps:,}** unique employees across all offices.",
