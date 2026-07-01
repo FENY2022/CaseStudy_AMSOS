@@ -86,6 +86,7 @@ with st.sidebar:
 
     nav_items = [
         '🏠 Dashboard',
+        '🧠 Asset Condition',
         '📦 ICT Inventory',
         '👥 Employees',
         '🏢 Offices',
@@ -117,6 +118,10 @@ with st.sidebar:
 if selected == '🏠 Dashboard':
     from pages.dashboard import render as render_dashboard
     render_dashboard(inv, repair, repl_df, emp_df, div_short)
+
+elif selected == '🧠 Asset Condition':
+    from pages.asset_condition import render as render_asset_condition
+    render_asset_condition(inv, repair)
 
 elif selected == '📦 ICT Inventory':
     from pages.inventory import render as render_inventory
