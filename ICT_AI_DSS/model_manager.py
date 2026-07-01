@@ -214,3 +214,64 @@ def generate_employee_recommendation(model_name, employee_data):
 
     result = query_llm(model_name, system_prompt, user_prompt, temperature=0.3)
     return result
+
+
+def generate_analytics_deep_reasoning(model_name, analytics_context):
+    """Generate portfolio-level analytics reasoning using the selected Ollama model."""
+    total_assets = analytics_context.get('total_assets', 0)
+    total_employees = analytics_context.get('total_employees', 0)
+    total_offices = analytics_context.get('total_offices', 0)
+    computers = analytics_context.get('computers', 0)
+    coverage_rate = analytics_context.get('coverage_rate', 0)
+    employees_without_computer = analytics_context.get('employees_without_computer', 0)
+    assets_over_5_years = analytics_context.get('assets_over_5_years', 0)
+    beyond_shelf_life = analytics_context.get('beyond_shelf_life', 0)
+    estimated_budget = analytics_context.get('estimated_budget', 0)
+    top_equipment = analytics_context.get('top_equipment', [])
+    low_coverage_offices = analytics_context.get('low_coverage_offices', [])
+    priority_mix = analytics_context.get('priority_mix', {})
+    budget_breakdown = analytics_context.get('budget_breakdown', [])
+
+    top_equipment_text = '\n'.join(
+        f"- {item['equipment']}: {item['count']}" for item in top_equipment
+    ) or '- No equipment distribution data available'
+    low_coverage_text = '\n'.join(
+        f"- {item['office']}: {item['coverage']:.1f}% coverage, {item['employees']} employees"
+        for item in low_coverage_offices
+    ) or '- No low-coverage offices detected'
+    priority_text = '\n'.join(
+        f"- {priority}: {count}" for priority, count in priority_mix.items()
+    ) or '- No asset priority model output available'
+    budget_text = '\n'.join(
+        f"- {item['item']}: PHP {item['budget']:,.0f}" for item in budget_breakdown
+    ) or '- No budget breakdown available'
+
+    system_prompt = (
+        "You are a senior ICT analytics advisor for a government asset management team. "
+        "Use the provided dashboard metrics to produce deep reasoning that helps managers "
+        "decide what to investigate and fund next. Be concise, evidence-based, and practical. "
+        "Structure your response with exactly these 5 sections:\n\n"
+        "## Executive Readout\n(2-3 sentences explaining the main operational story)\n\n"
+        "## Risk Drivers\n(2-4 bullets covering the strongest risks shown by the data)\n\n"
+        "## Priority Offices\n(2-4 bullets explaining which offices or office patterns need attention)\n\n"
+        "## Recommended Actions\n(3-5 bullets with specific next steps)\n\n"
+        "## Reasoning\n(2-3 sentences explaining how you weighed coverage, age, priority, and budget signals)"
+    )
+
+    user_prompt = (
+        f"Total ICT Assets: {total_assets:,}\n"
+        f"Total Unique Employees: {total_employees:,}\n"
+        f"Total Offices: {total_offices:,}\n"
+        f"Desktop/Laptop Assets: {computers:,}\n"
+        f"Employee Computer Coverage Rate: {coverage_rate:.1f}%\n"
+        f"Employees Without Desktop/Laptop: {employees_without_computer:,}\n"
+        f"Assets Over 5 Years: {assets_over_5_years:,}\n"
+        f"Assets Beyond Shelf Life: {beyond_shelf_life:,}\n"
+        f"Estimated Budget Signal: PHP {estimated_budget:,.0f}\n\n"
+        f"Top Equipment Types:\n{top_equipment_text}\n\n"
+        f"Lowest Coverage Offices:\n{low_coverage_text}\n\n"
+        f"Asset Replacement Priority Mix:\n{priority_text}\n\n"
+        f"Estimated Procurement Budget Breakdown:\n{budget_text}"
+    )
+
+    return query_llm(model_name, system_prompt, user_prompt, temperature=0.25)
