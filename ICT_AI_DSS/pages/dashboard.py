@@ -6,7 +6,7 @@ import numpy as np
 from ui_components import render_section_header, render_kpi_card
 
 
-def render(inv, repair, repl_df, emp_df, div_short):
+def render(inv, repair, repl_df, emp_df, div_short, selected_model=None):
     render_section_header('🏠 Executive Dashboard')
 
     inv['yearAcquired'] = pd.to_numeric(inv['yearAcquired'], errors='coerce')

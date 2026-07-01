@@ -9,6 +9,7 @@ from backend import (
     compute_office_equipment_counts,
 )
 from ui_components import render_section_header, render_kpi_card, to_csv, to_excel
+from model_manager import generate_procurement_recommendation, get_selected_model
 
 
 COMPUTER_ITEMS = ('Desktop Computer', 'Laptop Computer')
@@ -253,7 +254,7 @@ def _render_step_indicator(step):
     st.markdown(step_html, unsafe_allow_html=True)
 
 
-def render(inv, ollama_models):
+def render(inv, selected_model=None):
     render_section_header('💰 Procurement')
     step = st.session_state.get('proc_step', 1)
     _render_step_indicator(step)
@@ -392,6 +393,56 @@ def render(inv, ollama_models):
                 <span style="font-weight:700; color:#166534; font-size:1.1rem;">{_money(grand_total)}</span>
             </div>
             """, unsafe_allow_html=True)
+
+        # LLM Procurement Recommendation
+        model = selected_model or get_selected_model()
+        rec_key = 'proc_llm_rec'
+        if model:
+            st.divider()
+            render_section_header('🤖 AI Procurement Recommendation')
+            with st.container():
+                st.markdown(f'Generating recommendation using **{model}**...')
+                if st.button('Generate LLM Recommendation', key=rec_key, type='primary', use_container_width=True):
+                    context = {
+                        'items': selected_items,
+                        'total_employees': total_unique_emps,
+                        'without_computer': emps_without_computer,
+                        'offices_needing': len(office_counts),
+                        'required_budget': grand_total,
+                        'available_budget': available_budget,
+                        'desktop_recommended': next((s['units'] for s in summary_rows if s['item'] == 'Desktop Computer'), 0),
+                        'laptop_recommended': next((s['units'] for s in summary_rows if s['item'] == 'Laptop Computer'), 0),
+                        'printer_recommended': next((s['units'] for s in summary_rows if s['item'] == 'Printer'), 0),
+                    }
+                    budget_info = {'available': available_budget, 'required': grand_total}
+                    with st.spinner(f'Generating recommendation with {model}...'):
+                        llm_result = generate_procurement_recommendation(model, context, budget_info)
+                    if llm_result:
+                        sections = {'## Procurement Summary': '', '## Analysis': '', '## Recommendation': '', '## Why': ''}
+                        current_section = None
+                        for line in llm_result.split('\n'):
+                            stripped = line.strip()
+                            if stripped.startswith('## '):
+                                current_section = stripped
+                                if current_section not in sections:
+                                    current_section = None
+                            elif current_section and current_section in sections:
+                                sections[current_section] += line + '\n'
+
+                        if any(sections.values()):
+                            tabs = st.tabs(['Summary', 'Analysis', 'Recommendation', 'Why'])
+                            section_keys = ['## Procurement Summary', '## Analysis', '## Recommendation', '## Why']
+                            for tab, sk in zip(tabs, section_keys):
+                                with tab:
+                                    content = sections.get(sk, '*No content*')
+                                    st.markdown(content if content.strip() else '*No content*')
+                        else:
+                            st.markdown(f'<div class="ai-summary-box">{llm_result}</div>', unsafe_allow_html=True)
+                        st.caption(f'Recommendation by **{model}**')
+                    else:
+                        st.warning(f'Could not reach Ollama model **{model}**. Ensure `ollama serve` is running.')
+                else:
+                    st.caption('Click to generate an AI-powered procurement recommendation with detailed reasoning.')
 
         with st.expander('❓ How AI Computed These Recommendations'):
             st.markdown(f"""

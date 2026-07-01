@@ -3,9 +3,10 @@
 import streamlit as st
 import pandas as pd
 from ui_components import render_section_header
+from model_manager import generate_deep_analysis, get_selected_model
 
 
-def render(inv, repair):
+def render(inv, repair, selected_model=None):
     from backend import compute_asset_health_analysis
 
     render_section_header('🧠 AI Asset Health Assessment')
@@ -125,6 +126,42 @@ def render(inv, repair):
             with st.container():
                 st.markdown("**💡 Recommendation**")
                 st.warning(row['recommendation'])
+
+            # LLM Deep Analysis
+            model = selected_model or get_selected_model()
+            if model:
+                deep_key = f'deep_{row["propertyNumber"]}_{idx}'
+                with st.container():
+                    st.markdown("**🤖 Deep Analysis (LLM)**")
+                    if st.button('Generate Deep Analysis', key=deep_key, use_container_width=True):
+                        with st.spinner(f'Analyzing with {model}...'):
+                            deep_result = generate_deep_analysis(model, row)
+                        if deep_result:
+                            # Parse sections for structured display
+                            sections = {'## Asset Overview': '', '## Deep Analysis': '', '## Recommendation': '', '## Why': ''}
+                            current_section = None
+                            for line in deep_result.split('\n'):
+                                stripped = line.strip()
+                                if stripped.startswith('## '):
+                                    current_section = stripped
+                                    if current_section not in sections:
+                                        current_section = None
+                                elif current_section and current_section in sections:
+                                    sections[current_section] += line + '\n'
+
+                            if any(sections.values()):
+                                tabs = st.tabs(['Overview', 'Deep Analysis', 'Recommendation', 'Why'])
+                                section_keys = ['## Asset Overview', '## Deep Analysis', '## Recommendation', '## Why']
+                                for tab, sk in zip(tabs, section_keys):
+                                    with tab:
+                                        st.markdown(sections.get(sk, '*No content*'))
+                            else:
+                                st.markdown(f'<div class="ai-summary-box">{deep_result}</div>', unsafe_allow_html=True)
+                            st.caption(f'Analysis by **{model}**')
+                        else:
+                            st.warning(f'Could not reach Ollama model **{model}**. Ensure `ollama serve` is running.')
+                    else:
+                        st.caption(f'Click to analyze this asset using **{model}**')
 
             if valid_remarks:
                 with st.container():

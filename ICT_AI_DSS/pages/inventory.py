@@ -10,7 +10,7 @@ def _sorted_text_options(series):
     return sorted(values[values != ''].unique(), key=str.casefold)
 
 
-def render(inv):
+def render(inv, selected_model=None):
     render_section_header('📦 ICT Inventory')
 
     col_filters = st.columns(4)

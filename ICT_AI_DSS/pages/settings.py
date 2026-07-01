@@ -2,9 +2,10 @@
 
 import streamlit as st
 from ui_components import render_section_header
+from model_manager import get_ollama_models, get_selected_model
 
 
-def render(inv):
+def render(inv, selected_model=None):
     render_section_header('⚙ Settings')
 
     col1, col2 = st.columns([1, 1])
@@ -80,6 +81,28 @@ def render(inv):
             </table>
         </div>
         """, unsafe_allow_html=True)
+
+        st.markdown('**AI Model Configuration**')
+        model = selected_model or get_selected_model()
+        all_models = get_ollama_models()
+        if all_models:
+            model_html = '<div style="background:#FFFFFF; border:1px solid #E5E7EB; border-radius:8px; padding:1rem; margin-bottom:1rem;">'
+            if model:
+                model_html += f'<div style="margin-bottom:0.75rem;"><strong>Active Model:</strong> <span style="color:#166534;">{model}</span></div>'
+            model_html += '<div style="font-size:0.85rem; font-weight:600; margin-bottom:0.5rem;">Available Models</div>'
+            for m in all_models:
+                active = '✅' if m['name'] == model else '○'
+                size_str = m.get('size', '')
+                model_html += f'<div style="display:flex; justify-content:space-between; padding:0.2rem 0; font-size:0.8rem;"><span>{active} {m["name"]}</span><span style="color:#6B7280;">{size_str}</span></div>'
+            model_html += '</div>'
+            st.markdown(model_html, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:1rem; margin-bottom:1rem;">
+                <strong>Ollama Not Running</strong>
+                <p style="font-size:0.85rem; color:#6B7280;">Start Ollama service with <code>ollama serve</code> to enable AI model features.</p>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.markdown('**About**')
         st.markdown("""

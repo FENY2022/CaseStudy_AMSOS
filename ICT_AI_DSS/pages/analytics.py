@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from ui_components import render_section_header
 
 
-def render(inv, repl_df):
+def render(inv, repl_df, selected_model=None):
     render_section_header('📊 Analytics')
 
     tab1, tab2, tab3, tab4 = st.tabs([

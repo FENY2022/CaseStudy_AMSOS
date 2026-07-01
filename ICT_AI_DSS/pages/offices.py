@@ -5,7 +5,7 @@ import pandas as pd
 from ui_components import render_section_header, to_csv, to_excel
 
 
-def render(inv, div_short=None):
+def render(inv, div_short=None, selected_model=None):
     render_section_header('🏢 Offices')
 
     office_stats = inv.groupby('officeDivision').agg(
