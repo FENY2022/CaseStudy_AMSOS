@@ -468,8 +468,8 @@ def render_header():
         <div class="top-header-left">
             <div class="top-header-logo">AI</div>
             <div>
-                <div class="top-header-title">AI-DSS</div>
-                <div class="top-header-subtitle">Decision Support System</div>
+                <div class="top-header-title">ICT-AMSOS</div>
+                <div class="top-header-subtitle">Asset Management and Service Optimization System</div>
             </div>
         </div>
         """, unsafe_allow_html=True)

@@ -84,9 +84,9 @@ def render(inv):
         st.markdown('**About**')
         st.markdown("""
         <div style="background:#FFFFFF; border:1px solid #E5E7EB; border-radius:8px; padding:1rem;">
-            <p><strong>AI-DSS v2.0</strong></p>
+            <p><strong>ICT-AMSOS v2.0</strong></p>
             <p style="font-size:0.85rem; color:#6B7280;">
-                AI-Powered ICT Asset Decision Support System.<br>
+                AI-Powered ICT Asset Management and Service Optimization System.<br>
                 Designed for government agency ICT asset management.
             </p>
         </div>

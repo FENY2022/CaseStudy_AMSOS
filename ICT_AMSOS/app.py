@@ -1,5 +1,5 @@
 """
-AI-DSS: AI-Powered ICT Asset Decision Support System
+ICT-AMSOS: AI-Powered ICT Asset Management and Service Optimization System
 Redesigned UI — Executive Dashboard Interface
 """
 
@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 from pathlib import Path
 
 st.set_page_config(
-    page_title='AI-DSS | ICT Decision Support System',
+    page_title='ICT-AMSOS | ICT Asset Management and Service Optimization System',
     page_icon='🏛️',
     layout='wide',
     initial_sidebar_state='expanded'
@@ -78,8 +78,8 @@ with st.sidebar:
     <div class="sidebar-brand">
         <div class="sidebar-brand-icon">AI</div>
         <div>
-            <div class="sidebar-brand-text">AI-DSS</div>
-            <div class="sidebar-brand-sub">Decision Support</div>
+            <div class="sidebar-brand-text">ICT-AMSOS</div>
+            <div class="sidebar-brand-sub">Asset Management &amp; Service Optimization</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -107,7 +107,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="sidebar-footer">AI-DSS v2.0</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-footer">ICT-AMSOS v2.0</div>', unsafe_allow_html=True)
 
 
 # =====================================================================
