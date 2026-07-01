@@ -10,7 +10,8 @@ warnings.filterwarnings('ignore')
 
 CURRENT_YEAR = 2026
 BASE_DIR = Path(__file__).parent
-DATA_DIR = BASE_DIR / 'data'
+WORKSPACE_DATA_DIR = BASE_DIR.parent / 'data'
+DATA_DIR = WORKSPACE_DATA_DIR if WORKSPACE_DATA_DIR.exists() else BASE_DIR / 'data'
 MODEL_DIR = BASE_DIR / 'models'
 OUTPUT_DIR = BASE_DIR / 'outputs'
 DESKTOP_COST = 50000
