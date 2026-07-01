@@ -132,7 +132,7 @@ elif selected == '🏢 Offices':
 
 elif selected == '💰 Procurement':
     from pages.procurement import render as render_procurement
-    render_procurement(inv, repl_df, ollama_models)
+    render_procurement(inv, ollama_models)
 
 elif selected == '📊 Analytics':
     from pages.analytics import render as render_analytics
