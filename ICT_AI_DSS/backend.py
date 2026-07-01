@@ -907,15 +907,8 @@ def compute_asset_health_analysis(inv_df, repair_df):
         remarks = asset.get('remarks', '')
 
         asset_repairs = repair_df[
-            repair_df['Property No'].astype(str).str.strip() == str(prop_no).strip()
+            repair_df['Property No'].astype(str).str.strip().str.lower() == str(prop_no).strip().lower()
         ].copy() if 'Property No' in repair_df.columns else pd.DataFrame()
-
-        if asset_repairs.empty:
-            asset_repairs = repair_df[
-                repair_df['Actual User'].astype(str).str.contains(
-                    str(actual_user).strip(), case=False, na=False
-                )
-            ].copy() if 'Actual User' in repair_df.columns else pd.DataFrame()
 
         repairs_count = int(asset_repairs['Total Times Repaired'].iloc[0]) if not asset_repairs.empty and 'Total Times Repaired' in asset_repairs.columns else 0
 
