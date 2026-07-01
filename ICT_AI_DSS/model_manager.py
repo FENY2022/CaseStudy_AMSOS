@@ -258,6 +258,7 @@ def generate_analytics_deep_reasoning(model_name, analytics_context):
         "## Reasoning\n(2-3 sentences explaining how you weighed coverage, age, priority, and budget signals)"
     )
 
+
     user_prompt = (
         f"Total ICT Assets: {total_assets:,}\n"
         f"Total Unique Employees: {total_employees:,}\n"
