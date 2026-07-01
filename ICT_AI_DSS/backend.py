@@ -660,18 +660,18 @@ def compute_enhanced_priority_scores(emp_map, repl_df=None):
 # =====================================================================
 
 ISSUE_KEYWORDS = {
-    'Windows Update': r'(?i)(windows\s*update|windows\s+recovery|os\s+upgrade|operating\s+system)',
+    'Windows Update': r'(?i)(windows\s+update|windows\s+recovery|os\s+upgrade|operating\s+system)',
     'RAM Upgrade': r'(?i)(ram\s*upgrade|memory\s*upgrade|added\s*ram|low\s*memory|insufficient\s*memory)',
-    'Hard Disk Replacement': r'(?i)(hard\s*disk|hdd|ssd\s*replace|storage\s*replace|blue\s*screen.*(?:ssd|hdd|disk)|replac(e|ed)\s+(?:ssd|hard\s*drive))',
+    'Hard Disk Replacement': r'(?i)(hard\s+disk|hdd\s+replace|ssd\s+replace|storage\s+replace|blue\s+screen|replaced\s+(?:ssd|hard\s*drive|hdd))',
     'Motherboard Replacement': r'(?i)(motherboard|mobo|system\s*board)',
-    'Power Supply Replacement': r'(?i)(power\s*supply|psu|power\s*unit)',
-    'Monitor Replacement': r'(?i)(monitor|display|vga\s*cable|loose\s*connection.*monitor|no\s*display)',
-    'Network Issue': r'(?i)(network|ethernet|wifi|internet|connectivity|lan)',
-    'Software Installation': r'(?i)(install|microsoft\s*365|office\s*license|application)',
+    'Power Supply Replacement': r'(?i)(power\s+supply|psu|power\s+unit)',
+    'Monitor Replacement': r'(?i)(monitor\s+replace|display\s+issue|vga\s+cable|loose\s+connection.*monitor|no\s+display)',
+    'Network Issue': r'(?i)(network\s+issue|ethernet\s+problem|wifi\s+issue|connectivity|lan\s+problem|ethernet\s+port\s+problem)',
+    'Software Installation': r'(?i)(microsoft\s+365\s+install|office\s+license\s+install|engas\s+application|software\s+install|application\s+install)',
     'Virus Infection': r'(?i)(virus|malware|infection|threat)',
-    'Printer Driver Installation': r'(?i)(printer.*driver|driver.*printer|printer.*install|print.*driver)',
-    'Cleaning': r'(?i)(cleaning|clean|dust|debris|preventive\s*maintenance|airflow)',
-    'Operating System Reinstallation': r'(?i)(reformat|reinstall.*os|os.*reinstall|fresh\s*install|reinstallation)',
+    'Printer Driver Installation': r'(?i)(printer\s+driver|driver\s+install|printer\s+software|print\s+driver)',
+    'Cleaning': r'(?i)(cleaning\s+(?:cpu|system|unit|printer)|remove\s+dust|debris\s+inside|preventive\s+maintenance)',
+    'Operating System Reinstallation': r'(?i)(reformat|reinstall\s+os|os\s+reinstall|fresh\s+install|reinstallation)',
 }
 
 REPAIR_STATUS_WEIGHTS = {
@@ -910,10 +910,16 @@ def compute_asset_health_analysis(inv_df, repair_df):
             repair_df['Property No'].astype(str).str.strip().str.lower() == str(prop_no).strip().lower()
         ].copy() if 'Property No' in repair_df.columns else pd.DataFrame()
 
-        repairs_count = int(asset_repairs['Total Times Repaired'].iloc[0]) if not asset_repairs.empty and 'Total Times Repaired' in asset_repairs.columns else 0
+        if not asset_repairs.empty and 'Total Times Repaired' in asset_repairs.columns:
+            valid_counts = pd.to_numeric(asset_repairs['Total Times Repaired'], errors='coerce').dropna()
+            repairs_count = int(valid_counts.iloc[0]) if not valid_counts.empty else len(asset_repairs_dedup)
+        else:
+            repairs_count = 0
 
-        remarks_list = asset_repairs['Remarks / Action Taken'].tolist() if not asset_repairs.empty and 'Remarks / Action Taken' in asset_repairs.columns else []
-        remarks_statuses = asset_repairs['Remarks'].tolist() if not asset_repairs.empty and 'Remarks' in asset_repairs.columns else []
+        asset_repairs_dedup = asset_repairs.drop_duplicates(subset='SRF Track ID', keep='first') if 'SRF Track ID' in asset_repairs.columns else asset_repairs
+
+        remarks_list = asset_repairs_dedup['Remarks / Action Taken'].tolist() if not asset_repairs_dedup.empty and 'Remarks / Action Taken' in asset_repairs_dedup.columns else []
+        remarks_statuses = asset_repairs_dedup['Remarks'].tolist() if not asset_repairs_dedup.empty and 'Remarks' in asset_repairs_dedup.columns else []
 
         current_status = str(remarks).strip() if not pd.isna(remarks) else 'Operational'
         if remarks_statuses:
